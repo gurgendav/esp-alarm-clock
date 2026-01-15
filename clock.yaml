@@ -1,0 +1,273 @@
+---
+esphome:
+  name: clock
+  friendly_name: Clock
+  on_boot:
+    then:
+      - pcf8563.read_time:
+      - light.turn_on: display_backlight
+  platformio_options:
+    board_build.flash_mode: dio
+
+packages:
+  core: !include debug.yaml
+
+esp32:
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Clock Fallback Hotspot"
+    password: !secret wifi_password
+
+
+captive_portal:
+
+api:
+  reboot_timeout: 0s
+
+web_server:
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+
+i2c:
+  - id: internal_i2c
+    sda: GPIO11
+    scl: GPIO12
+
+rc522_i2c:
+  - id: nfc_reader
+    i2c_id: internal_i2c
+    address: 0x28
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer
+  - platform: ledc
+    pin: GPIO9
+    id: backlight_output
+
+rtttl:
+  output: buzzer
+
+sensor:
+  - platform: rotary_encoder
+    id: encoder
+    pin_a: GPIO40
+    pin_b: GPIO41
+    on_clockwise:
+      - lambda: |-
+          int alarm_minutes_var = id(alarm_minutes).state;
+          alarm_minutes_var += 15;
+          id(alarm_minutes).state = alarm_minutes_var % (24 * 60);
+      - script.execute: update_minutes_hand
+    on_anticlockwise:
+      - lambda: |-
+          int alarm_minutes_var = id(alarm_minutes).state;
+          alarm_minutes_var -= 15;
+          id(alarm_minutes).state = alarm_minutes_var % (24 * 60);
+      - script.execute: update_minutes_hand
+
+time:
+  - platform: pcf8563
+    id: rtctime
+    i2c_id: internal_i2c
+    address: 0x51
+    on_time:
+      - minutes: "*"
+        then:
+          - script.execute: update_minutes_hand
+
+  - platform: sntp
+    id: sntp_time
+    timezone: Europe/London
+    servers:
+     - 0.pool.ntp.org
+     - 1.pool.ntp.org
+     - 2.pool.ntp.org
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
+
+number:
+  - platform: homeassistant
+    id: alarm_minutes
+    entity_id: number.alarm_minutes
+
+binary_sensor:
+  - platform: gpio
+    name: Button
+    id: front_button
+    pin: GPIO42
+
+  - platform: gpio
+    name: Hold Button
+    pin: GPIO46
+
+spi:
+  id: spi_bus
+  mosi_pin: GPIO5
+  clk_pin: GPIO6
+
+light:
+  - platform: monochromatic
+    name: "Backlight"
+    output: backlight_output
+    id: display_backlight
+    default_transition_length: 0s
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO7
+    reset_pin: GPIO8
+    dc_pin: GPIO4
+    invert_colors: true
+    auto_clear_enabled: false
+    update_interval: never
+
+lvgl:
+  style_definitions:
+    - id: date_style      # choose an ID for your definition
+      text_font: montserrat_14
+      align: center
+      text_color: White
+      bg_opa: TRANSP
+      radius: 4
+      pad_all: 2
+  pages:
+    - id: main_page
+      height: 100%
+      width: 100%
+      bg_color: Black
+      widgets:
+        - meter:
+            height: 100%
+            width: 100%
+            align: CENTER
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            text_color: White
+            scales:
+              - range_from: 0 # minutes scale
+                range_to: 60
+                angle_range: 360
+                rotation: 270
+                ticks:
+                  width: 1
+                  count: 61
+                  length: 10
+                  color: White
+                indicators:
+                  - line:
+                      id: minute_hand
+                      width: 2
+                      color: White
+                      r_mod: -25
+                      value: 0
+              - range_from: 1 # hours scale for labels
+                range_to: 12
+                angle_range: 330
+                rotation: 300
+                ticks:
+                  width: 1
+                  count: 12
+                  length: 1
+                  major:
+                    stride: 1
+                    width: 4
+                    length: 10
+                    color: White
+                    label_gap: 12
+              - range_from: 0 # hi-res hours scale for hand
+                range_to: 720
+                angle_range: 360
+                rotation: 270
+                ticks:
+                  count: 0
+                indicators:
+                  - line:
+                      id: hour_hand
+                      width: 4
+                      color: White
+                      r_mod: -40
+                      value: 0
+                  - line:
+                      id: secs_hand
+                      width: 1
+                      color: Red
+                      r_mod: -15
+                      value: 0
+        - obj:
+            width: 120
+            height: 120
+            align: CENTER
+            bg_color: Black
+            bg_opa: 85%
+            radius: 60
+            clip_corner: true
+            pad_all: 0
+            border_width: 1
+            widgets:
+              - label:
+                  styles: date_style
+                  id: alarm_label
+                  y: -20
+              - label:
+                  id: date_label
+                  styles: date_style
+                  y: 20
+                                
+interval:
+  - interval: 25ms
+    then:
+
+      - lvgl.indicator.update:
+          id: secs_hand
+          value: !lambda |-
+            auto now = id(rtctime).now();
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            return (now.second * 12) + (tv.tv_usec / 83330.0);
+  
+script:
+  - id: update_minutes_hand
+    then:
+      - lvgl.indicator.update:
+          id: hour_hand
+          value: !lambda |-
+            auto now = id(rtctime).now();
+            return std::fmod(now.hour, 12) * 60 + now.minute;
+      - lvgl.indicator.update:
+          id: minute_hand
+          value: !lambda |-
+            return id(rtctime).now().minute;
+      - lvgl.label.update:
+          id: alarm_label
+          text: !lambda |-
+            int alarm_minutes_var = id(alarm_minutes).state;
+            static char alarm_buf[16];
+            snprintf(alarm_buf, sizeof(alarm_buf), "Alarm %02d:%02d", alarm_minutes_var / 60, alarm_minutes_var % 60);
+            return alarm_buf;
+      - lvgl.label.update:
+          id: date_label
+          text: !lambda |-
+            static const char * const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+            static const char * const mon_names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+            static char date_buf[16];
+            auto now = id(rtctime).now();
+            snprintf(date_buf, sizeof(date_buf), "%s, %s %2d", day_names[id(rtctime).now().day_of_week - 1], mon_names[now.month-1], now.day_of_month);
+            return date_buf;

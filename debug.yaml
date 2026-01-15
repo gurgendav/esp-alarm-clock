@@ -1,0 +1,52 @@
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+  - platform: uptime
+    name: "Uptime"
+    disabled_by_default: false
+    force_update: false
+    unit_of_measurement: s
+    icon: mdi:timer-outline
+    accuracy_decimals: 0
+    device_class: duration
+    state_class: total_increasing
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: internal_temperature
+    name: "Internal Temperature"
+  - platform: template
+    id: esp_memory
+    icon: mdi:memory
+    name: Free Memory
+    lambda: return heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    unit_of_measurement: 'kB'
+    state_class: measurement
+    entity_category: "diagnostic"
+
+binary_sensor:
+  - platform: status
+    name: Online
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      icon: mdi:ip-network-outline
+    ssid:
+      name: "SSID"
+      icon: mdi:wifi
+  - platform: version
+    name: "Version"
+    hide_timestamp: true
+    disabled_by_default: false
+    icon: mdi:new-box
+    entity_category: diagnostic
+
+button:
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "ESP Reboot"
