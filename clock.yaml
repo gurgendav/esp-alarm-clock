@@ -6,6 +6,7 @@ esphome:
     then:
       - pcf8563.read_time:
       - light.turn_on: display_backlight
+      - script.execute: update_minutes_hand
   platformio_options:
     board_build.flash_mode: dio
 
@@ -67,16 +68,22 @@ sensor:
     pin_b: GPIO41
     on_clockwise:
       - lambda: |-
-          int alarm_minutes_var = id(alarm_minutes).state;
-          alarm_minutes_var += 15;
-          id(alarm_minutes).state = alarm_minutes_var % (24 * 60);
-      - script.execute: update_minutes_hand
+          auto alarm_time_var = id(alarm_time).state_as_esptime();
+          alarm_time_var.minute += 15;
+          if (alarm_time_var.minute >= 60) {
+            alarm_time_var.minute -= 60;
+            alarm_time_var.hour = (alarm_time_var.hour + 1) % 24;
+          }
+          id(alarm_time).make_call().set_time(alarm_time_var).perform();
     on_anticlockwise:
       - lambda: |-
-          int alarm_minutes_var = id(alarm_minutes).state;
-          alarm_minutes_var -= 15;
-          id(alarm_minutes).state = alarm_minutes_var % (24 * 60);
-      - script.execute: update_minutes_hand
+          auto alarm_time_var = id(alarm_time).state_as_esptime();
+          if (alarm_time_var.minute < 15) {
+            alarm_time_var.minute += 60;
+            alarm_time_var.hour = (alarm_time_var.hour + 23) % 24;
+          }
+          alarm_time_var.minute -= 15;
+          id(alarm_time).make_call().set_time(alarm_time_var).perform();
 
 time:
   - platform: pcf8563
@@ -98,11 +105,20 @@ time:
     on_time_sync:
       then:
         - pcf8563.write_time:
+        - script.execute: update_minutes_hand
 
-number:
-  - platform: homeassistant
-    id: alarm_minutes
-    entity_id: number.alarm_minutes
+datetime:
+  - platform: template
+    id: alarm_time
+    name: "Alarm Time"
+    type: time
+    icon: "mdi:alarm"
+    initial_value: "07:00:00"
+    restore_value: true
+    optimistic: yes
+    on_value:
+      then:
+        - script.execute: update_minutes_hand
 
 binary_sensor:
   - platform: gpio
@@ -225,10 +241,12 @@ lvgl:
                   styles: date_style
                   id: alarm_label
                   y: -20
+                  text: ""
               - label:
                   id: date_label
                   styles: date_style
                   y: 20
+                  text: ""
                                 
 interval:
   - interval: 25ms
@@ -257,9 +275,9 @@ script:
       - lvgl.label.update:
           id: alarm_label
           text: !lambda |-
-            int alarm_minutes_var = id(alarm_minutes).state;
+            auto alarm_time_var = id(alarm_time);
             static char alarm_buf[16];
-            snprintf(alarm_buf, sizeof(alarm_buf), "Alarm %02d:%02d", alarm_minutes_var / 60, alarm_minutes_var % 60);
+            snprintf(alarm_buf, sizeof(alarm_buf), "Alarm %02d:%02d", alarm_time_var->hour, alarm_time_var->minute);
             return alarm_buf;
       - lvgl.label.update:
           id: date_label
