@@ -1,17 +1,16 @@
----
 esphome:
-  name: clock
-  friendly_name: Clock
+  name: esphome-web-56058c
+  friendly_name: AlarmV1
+  min_version: 2025.11.0
+  name_add_mac_suffix: false
   on_boot:
     then:
+      - output.set_max_power:
+          id: buzzer
+          max_power: 100%
       - pcf8563.read_time:
-      - light.turn_on: display_backlight
+      - script.execute: reset_idle_timer
       - script.execute: update_minutes_hand
-  platformio_options:
-    board_build.flash_mode: dio
-
-packages:
-  core: !include debug.yaml
 
 esp32:
   variant: esp32s3
@@ -22,13 +21,6 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-  ap:
-    ssid: "Clock Fallback Hotspot"
-    password: !secret wifi_password
-
-
-captive_portal:
-
 api:
   reboot_timeout: 0s
 
@@ -36,7 +28,6 @@ web_server:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
 
 logger:
 
@@ -54,12 +45,32 @@ output:
   - platform: ledc
     pin: GPIO3
     id: buzzer
+    frequency: 2000 Hz
   - platform: ledc
     pin: GPIO9
     id: backlight_output
 
-rtttl:
-  output: buzzer
+globals:
+  - id: alarm_ringing
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: alarm_disabled_today
+    type: bool
+    restore_value: yes
+    initial_value: "false"
+  - id: alarm_disabled_day
+    type: int
+    restore_value: yes
+    initial_value: "-1"
+  - id: last_alarm_minute_key
+    type: int
+    restore_value: no
+    initial_value: "-1"
+  - id: last_alarm_debug_minute_key
+    type: int
+    restore_value: no
+    initial_value: "-1"
 
 sensor:
   - platform: rotary_encoder
@@ -67,6 +78,7 @@ sensor:
     pin_a: GPIO40
     pin_b: GPIO41
     on_clockwise:
+      - script.execute: reset_idle_timer
       - lambda: |-
           auto alarm_time_var = id(alarm_time).state_as_esptime();
           alarm_time_var.minute += 15;
@@ -76,13 +88,14 @@ sensor:
           }
           id(alarm_time).make_call().set_time(alarm_time_var).perform();
     on_anticlockwise:
+      - script.execute: reset_idle_timer
       - lambda: |-
           auto alarm_time_var = id(alarm_time).state_as_esptime();
-          if (alarm_time_var.minute < 15) {
+          if (alarm_time_var.minute < 5) {
             alarm_time_var.minute += 60;
             alarm_time_var.hour = (alarm_time_var.hour + 23) % 24;
           }
-          alarm_time_var.minute -= 15;
+          alarm_time_var.minute -= 5;
           id(alarm_time).make_call().set_time(alarm_time_var).perform();
 
 time:
@@ -93,11 +106,12 @@ time:
     on_time:
       - minutes: "*"
         then:
+          - script.execute: sync_alarm_day_state
           - script.execute: update_minutes_hand
 
   - platform: sntp
     id: sntp_time
-    timezone: Europe/London
+    timezone: Asia/Yerevan
     servers:
      - 0.pool.ntp.org
      - 1.pool.ntp.org
@@ -125,15 +139,30 @@ binary_sensor:
     name: Button
     id: front_button
     pin: GPIO42
+    on_press:
+      - script.execute: stop_alarm
+      - script.execute: reset_idle_timer
 
   - platform: gpio
     name: Hold Button
     pin: GPIO46
+    on_press:
+      - script.execute: stop_alarm
+      - script.execute: reset_idle_timer
 
 spi:
   id: spi_bus
   mosi_pin: GPIO5
   clk_pin: GPIO6
+
+touchscreen:
+  platform: ft5x06
+  id: dial_touchscreen
+  i2c_id: internal_i2c
+  address: 0x38
+  interrupt_pin: GPIO14
+  on_touch:
+    - script.execute: reset_idle_timer
 
 light:
   - platform: monochromatic
@@ -227,6 +256,7 @@ lvgl:
                       r_mod: -15
                       value: 0
         - obj:
+            id: alarm_status_circle
             width: 120
             height: 120
             align: CENTER
@@ -236,6 +266,16 @@ lvgl:
             clip_corner: true
             pad_all: 0
             border_width: 1
+            on_click:
+              then:
+                - if:
+                    condition:
+                      lambda: "return id(alarm_ringing);"
+                    then:
+                      - script.execute: stop_alarm
+                    else:
+                      - script.execute: toggle_alarm_for_today
+                - script.execute: reset_idle_timer
             widgets:
               - label:
                   styles: date_style
@@ -259,10 +299,175 @@ interval:
             struct timeval tv;
             gettimeofday(&tv, NULL);
             return (now.second * 12) + (tv.tv_usec / 83330.0);
+  - interval: 1s
+    then:
+      - lambda: |-
+          auto now = id(rtctime).now();
+          if (!now.is_valid()) {
+            return;
+          }
+          const int minute_key = now.day_of_year * 1440 + now.hour * 60 + now.minute;
+          if (id(last_alarm_debug_minute_key) == minute_key) {
+            return;
+          }
+          id(last_alarm_debug_minute_key) = minute_key;
+          auto alarm_time_var = id(alarm_time);
+          if (alarm_time_var == nullptr) {
+            ESP_LOGW("alarm", "Alarm check at %02d:%02d:%02d but alarm_time is null", now.hour, now.minute, now.second);
+            return;
+          }
+          ESP_LOGI(
+            "alarm",
+            "Alarm check now=%02d:%02d:%02d target=%02d:%02d disabled_today=%d ringing=%d",
+            now.hour,
+            now.minute,
+            now.second,
+            alarm_time_var->hour,
+            alarm_time_var->minute,
+            id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year,
+            id(alarm_ringing)
+          );
+      - if:
+          condition:
+            lambda: |-
+              auto now = id(rtctime).now();
+              if (!now.is_valid()) {
+                return false;
+              }
+              if (id(alarm_ringing)) {
+                return false;
+              }
+              if (id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
+                return false;
+              }
+              auto alarm_time_var = id(alarm_time);
+              if (alarm_time_var == nullptr) {
+                return false;
+              }
+              if (now.hour != alarm_time_var->hour || now.minute != alarm_time_var->minute) {
+                return false;
+              }
+              const int minute_key = now.day_of_year * 1440 + now.hour * 60 + now.minute;
+              if (id(last_alarm_minute_key) == minute_key) {
+                return false;
+              }
+              id(last_alarm_minute_key) = minute_key;
+              ESP_LOGI("alarm", "Alarm trigger matched at %02d:%02d:%02d for %02d:%02d", now.hour, now.minute, now.second, alarm_time_var->hour, alarm_time_var->minute);
+              return true;
+          then:
+            - script.execute: start_alarm
   
 script:
+  - id: sync_alarm_day_state
+    then:
+      - lambda: |-
+          auto now = id(rtctime).now();
+          if (now.is_valid() && id(alarm_disabled_today) && id(alarm_disabled_day) != now.day_of_year) {
+            id(alarm_disabled_today) = false;
+            id(alarm_disabled_day) = -1;
+          }
+      - script.execute: update_alarm_status_ui
+
+  - id: toggle_alarm_for_today
+    then:
+      - lambda: |-
+          auto now = id(rtctime).now();
+          if (!now.is_valid()) {
+            return;
+          }
+          if (id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
+            id(alarm_disabled_today) = false;
+            id(alarm_disabled_day) = -1;
+          } else {
+            id(alarm_disabled_today) = true;
+            id(alarm_disabled_day) = now.day_of_year;
+          }
+      - script.execute: update_alarm_status_ui
+
+  - id: update_alarm_status_ui
+    then:
+      - lvgl.widget.update:
+          id: alarm_status_circle
+          bg_color: !lambda |-
+            auto now = id(rtctime).now();
+            if (now.is_valid() && id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
+              return lv_color_hex(0xFFD54F);
+            }
+            return lv_color_hex(0x000000);
+
+  - id: start_alarm
+    mode: restart
+    then:
+      - lambda: |-
+          id(alarm_ringing) = true;
+          auto now = id(rtctime).now();
+          ESP_LOGI("alarm", "Starting alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
+      - script.execute: alarm_loop
+      - script.execute: alarm_timeout
+
+  - id: stop_alarm
+    then:
+      - lambda: |-
+          if (id(alarm_ringing)) {
+            auto now = id(rtctime).now();
+            ESP_LOGI("alarm", "Stopping alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
+          }
+          id(alarm_ringing) = false;
+      - script.stop: alarm_loop
+      - script.stop: alarm_timeout
+      - output.turn_off: buzzer
+
+  - id: alarm_loop
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: "return id(alarm_ringing);"
+          then:
+            - output.ledc.set_frequency:
+                id: buzzer
+                frequency: "2700Hz"
+            - output.set_level:
+                id: buzzer
+                level: 50%
+            - delay: 900ms
+            - output.turn_off: buzzer
+            - delay: 150ms
+            - output.ledc.set_frequency:
+                id: buzzer
+                frequency: "2300Hz"
+            - output.set_level:
+                id: buzzer
+                level: 50%
+            - delay: 900ms
+            - output.turn_off: buzzer
+            - delay: 350ms
+
+  - id: alarm_timeout
+    mode: restart
+    then:
+      - delay: 5min
+      - if:
+          condition:
+            lambda: "return id(alarm_ringing);"
+          then:
+            - logger.log: "Alarm timed out after 5 minutes"
+            - script.execute: stop_alarm
+
+  - id: reset_idle_timer
+    mode: restart
+    then:
+      - light.turn_on:
+          id: display_backlight
+          brightness: 100%
+      - delay: 1min
+      - light.turn_on:
+          id: display_backlight
+          brightness: 15%
+
   - id: update_minutes_hand
     then:
+      - script.execute: update_alarm_status_ui
       - lvgl.indicator.update:
           id: hour_hand
           value: !lambda |-
