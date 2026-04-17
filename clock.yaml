@@ -1,3 +1,6 @@
+substitutions:
+  alarm_audio_player_entity: media_player.living_room_speaker_2
+
 esphome:
   name: esphome-web-56058c
   friendly_name: AlarmV1
@@ -788,7 +791,9 @@ script:
           }
 
           if (id(next_ring_override_active)) {
-            if (id(next_ring_override_epoch) > uint32_t(now.timestamp)) {
+            const uint32_t now_minute = uint32_t(now.timestamp / 60);
+            const uint32_t override_minute = uint32_t(id(next_ring_override_epoch) / 60);
+            if (override_minute >= now_minute) {
               id(next_alarm_available) = true;
               id(next_alarm_epoch) = id(next_ring_override_epoch);
               return;
@@ -904,6 +909,42 @@ script:
               return 0.08f;
             }
             return 0.25f;
+
+  - id: start_alarm_media_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant alarm audio start");
+      - homeassistant.action:
+          action: script.alarmv1_start_alarm_audio
+          data:
+            entity_id: ${alarm_audio_player_entity}
+          on_success:
+            - if:
+                condition:
+                  lambda: "return id(alarm_ringing);"
+                then:
+                  - lambda: |-
+                      ESP_LOGI("alarm", "Requested Home Assistant alarm audio start");
+                  - script.stop: alarm_loop
+                  - output.turn_off: buzzer
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant alarm audio start failed: %s", error.c_str());
+
+  - id: stop_alarm_media_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant alarm audio stop for %s", "${alarm_audio_player_entity}");
+      - homeassistant.action:
+          action: media_player.media_stop
+          data:
+            entity_id: ${alarm_audio_player_entity}
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant alarm audio stop for %s", "${alarm_audio_player_entity}");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant alarm audio stop failed: %s", error.c_str());
 
   - id: reset_idle_timer
     mode: restart
@@ -1092,6 +1133,7 @@ script:
           ESP_LOGI("alarm", "Starting alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
       - script.execute: apply_active_brightness
       - script.execute: update_minutes_hand
+      - script.execute: start_alarm_media_on_ha
       - script.execute: alarm_loop
       - script.execute: alarm_timeout
 
@@ -1109,6 +1151,7 @@ script:
       - script.stop: alarm_loop
       - script.stop: alarm_timeout
       - output.turn_off: buzzer
+      - script.execute: stop_alarm_media_on_ha
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
 
