@@ -77,14 +77,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
-  - id: alarm_disabled_today
+  - id: skip_next_ring
     type: bool
     restore_value: yes
     initial_value: "false"
-  - id: alarm_disabled_day
-    type: int
-    restore_value: yes
-    initial_value: "-1"
   - id: last_alarm_minute_key
     type: int
     restore_value: no
@@ -145,12 +141,33 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: dismiss_feedback_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: next_ring_override_active
+    type: bool
+    restore_value: yes
+    initial_value: "false"
+  - id: next_ring_override_epoch
+    type: uint32_t
+    restore_value: yes
+    initial_value: "0"
+  - id: next_alarm_available
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: next_alarm_epoch
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
 
 switch:
   - platform: template
     id: alarm_enabled_switch
     name: "Alarm Enabled"
     icon: "mdi:alarm-check"
+    restore_mode: RESTORE_DEFAULT_ON
     lambda: |-
       return id(alarm_enabled);
     turn_on_action:
@@ -201,11 +218,11 @@ sensor:
           id(last_encoder_turn_ms) = now_ms;
           id(last_encoder_direction) = direction;
 
-          int step_minutes = 5;
+          int step_minutes = 1;
           if (delta_ms < 70) {
-            step_minutes = 30;
-          } else if (delta_ms < 140) {
             step_minutes = 15;
+          } else if (delta_ms < 140) {
+            step_minutes = 5;
           }
 
           if (id(alarm_ringing)) {
@@ -223,13 +240,24 @@ sensor:
             return;
           }
 
-          auto alarm_time_var = id(alarm_time).state_as_esptime();
-          int total_minutes = alarm_time_var.hour * 60 + alarm_time_var.minute + step_minutes;
-          total_minutes %= 1440;
-          alarm_time_var.hour = total_minutes / 60;
-          alarm_time_var.minute = total_minutes % 60;
-          id(alarm_time).make_call().set_time(alarm_time_var).perform();
-          ESP_LOGI("alarm", "Alarm time adjusted clockwise by %d minutes (delta=%ums)", step_minutes, delta_ms);
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
+          if (!now.is_valid() || !id(next_alarm_available)) {
+            ESP_LOGW("alarm", "Ignoring clockwise encoder turn because next ring is unavailable");
+            return;
+          }
+          uint32_t candidate_epoch = id(next_alarm_epoch) + (step_minutes * 60);
+          const uint32_t min_epoch = ((uint32_t(now.timestamp) / 60) + 1) * 60;
+          if (candidate_epoch < min_epoch) {
+            candidate_epoch = min_epoch;
+          }
+          id(next_ring_override_active) = true;
+          id(next_ring_override_epoch) = candidate_epoch;
+          id(update_minutes_hand).execute();
+          auto next_alarm = ESPTime::from_epoch_local(candidate_epoch);
+          ESP_LOGI("alarm", "Next ring override adjusted clockwise by %d minutes to %02d:%02d", step_minutes, next_alarm.hour, next_alarm.minute);
     on_anticlockwise:
       - script.execute: reset_idle_timer
       - lambda: |-
@@ -242,11 +270,11 @@ sensor:
           id(last_encoder_turn_ms) = now_ms;
           id(last_encoder_direction) = direction;
 
-          int step_minutes = 5;
+          int step_minutes = 1;
           if (delta_ms < 70) {
-            step_minutes = 30;
-          } else if (delta_ms < 140) {
             step_minutes = 15;
+          } else if (delta_ms < 140) {
+            step_minutes = 5;
           }
 
           if (id(alarm_ringing)) {
@@ -264,15 +292,24 @@ sensor:
             return;
           }
 
-          auto alarm_time_var = id(alarm_time).state_as_esptime();
-          int total_minutes = alarm_time_var.hour * 60 + alarm_time_var.minute - step_minutes;
-          while (total_minutes < 0) {
-            total_minutes += 1440;
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
           }
-          alarm_time_var.hour = total_minutes / 60;
-          alarm_time_var.minute = total_minutes % 60;
-          id(alarm_time).make_call().set_time(alarm_time_var).perform();
-          ESP_LOGI("alarm", "Alarm time adjusted anticlockwise by %d minutes (delta=%ums)", step_minutes, delta_ms);
+          if (!now.is_valid() || !id(next_alarm_available)) {
+            ESP_LOGW("alarm", "Ignoring anticlockwise encoder turn because next ring is unavailable");
+            return;
+          }
+          int32_t candidate_epoch = int32_t(id(next_alarm_epoch)) - (step_minutes * 60);
+          const uint32_t min_epoch = ((uint32_t(now.timestamp) / 60) + 1) * 60;
+          if (candidate_epoch < int32_t(min_epoch)) {
+            candidate_epoch = int32_t(min_epoch);
+          }
+          id(next_ring_override_active) = true;
+          id(next_ring_override_epoch) = uint32_t(candidate_epoch);
+          id(update_minutes_hand).execute();
+          auto next_alarm = ESPTime::from_epoch_local(uint32_t(candidate_epoch));
+          ESP_LOGI("alarm", "Next ring override adjusted anticlockwise by %d minutes to %02d:%02d", step_minutes, next_alarm.hour, next_alarm.minute);
 
 time:
   - platform: pcf8563
@@ -297,16 +334,64 @@ time:
 
 datetime:
   - platform: template
-    id: alarm_time
-    name: "Alarm Time"
+    id: weekday_alarm_time
+    name: "Weekday Alarm Time"
     type: time
-    icon: "mdi:alarm"
+    icon: "mdi:calendar-week"
     initial_value: "07:00:00"
     restore_value: true
     optimistic: yes
     on_value:
       then:
         - script.execute: update_minutes_hand
+  - platform: template
+    id: weekend_alarm_time
+    name: "Weekend Alarm Time"
+    type: time
+    icon: "mdi:calendar-weekend"
+    initial_value: "09:00:00"
+    restore_value: true
+    optimistic: yes
+    on_value:
+      then:
+        - script.execute: update_minutes_hand
+text_sensor:
+  - platform: template
+    id: next_alarm_time_text
+    name: "Next Alarm Time"
+    icon: "mdi:calendar-clock"
+    device_class: timestamp
+    update_interval: 30s
+    lambda: |-
+      auto now = id(sntp_time).now();
+      if (!now.is_valid()) {
+        now = id(rtctime).now();
+      }
+      if (!now.is_valid()) {
+        return {""};
+      }
+      if (!id(alarm_enabled)) {
+        return {""};
+      }
+      if (!id(next_alarm_available)) {
+        return {""};
+      }
+
+      time_t candidate_epoch = id(next_alarm_epoch);
+      auto local = ESPTime::from_epoch_local(candidate_epoch);
+      char base_buf[32];
+      local.strftime(base_buf, sizeof(base_buf), "%Y-%m-%dT%H:%M:%S");
+      int32_t tz_offset = ESPTime::timezone_offset();
+      char sign = '+';
+      if (tz_offset < 0) {
+        sign = '-';
+        tz_offset = -tz_offset;
+      }
+      int tz_hours = tz_offset / 3600;
+      int tz_minutes = (tz_offset % 3600) / 60;
+      char out_buf[40];
+      snprintf(out_buf, sizeof(out_buf), "%s%c%02d:%02d", base_buf, sign, tz_hours, tz_minutes);
+      return {out_buf};
 
 binary_sensor:
   - platform: gpio
@@ -479,25 +564,39 @@ lvgl:
             clip_corner: true
             pad_all: 0
             border_width: 1
+            widgets:
+              - label:
+                  styles: date_style
+                  id: alarm_label
+                  width: 104
+                  y: -20
+                  text_align: center
+                  text: ""
+              - label:
+                  id: date_label
+                  styles: date_style
+                  width: 104
+                  y: 20
+                  text_align: center
+                  text: ""
+        - button:
+            id: center_tap_button
+            width: 120
+            height: 120
+            align: CENTER
+            radius: 60
+            bg_opa: TRANSP
+            border_width: 0
+            shadow_width: 0
+            press_lock: true
             on_click:
               then:
                 - if:
                     condition:
                       lambda: "return !id(alarm_ringing);"
                     then:
-                      - script.execute: toggle_alarm_for_today
+                      - script.execute: toggle_skip_next_ring
                 - script.execute: reset_idle_timer
-            widgets:
-              - label:
-                  styles: date_style
-                  id: alarm_label
-                  y: -20
-                  text: ""
-              - label:
-                  id: date_label
-                  styles: date_style
-                  y: 20
-                  text: ""
         - button:
             id: snooze_button
             hidden: true
@@ -587,23 +686,21 @@ interval:
 
           if (id(last_alarm_debug_minute_key) != minute_key) {
             id(last_alarm_debug_minute_key) = minute_key;
-            auto alarm_time_var = id(alarm_time);
-            if (alarm_time_var != nullptr) {
+            if (id(next_alarm_available)) {
+              auto next_alarm = ESPTime::from_epoch_local(id(next_alarm_epoch));
               ESP_LOGI(
                 "alarm",
-                "Alarm check now=%02d:%02d:%02d target=%02d:%02d enabled=%d disabled_today=%d ringing=%d snooze_active=%d snooze_target=%d/%02d:%02d",
+                "Alarm check now=%02d:%02d:%02d target=%02d:%02d enabled=%d skip_next=%d ringing=%d snooze_active=%d override=%d",
                 now.hour,
                 now.minute,
                 now.second,
-                alarm_time_var->hour,
-                alarm_time_var->minute,
+                next_alarm.hour,
+                next_alarm.minute,
                 id(alarm_enabled),
-                id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year,
+                id(skip_next_ring),
                 id(alarm_ringing),
                 id(snooze_active),
-                id(snooze_day_of_year),
-                id(snooze_hour),
-                id(snooze_minute)
+                id(next_ring_override_active)
               );
             }
           }
@@ -620,32 +717,18 @@ interval:
               if (!id(alarm_enabled) || id(alarm_ringing)) {
                 return false;
               }
-              auto alarm_time_var = id(alarm_time);
-              if (alarm_time_var == nullptr) {
+              if (!id(next_alarm_available)) {
                 return false;
               }
-
-              bool alarm_due = false;
-              if (id(snooze_active)) {
-                alarm_due = id(snooze_day_of_year) == now.day_of_year &&
-                            id(snooze_hour) == now.hour &&
-                            id(snooze_minute) == now.minute;
-              } else {
-                if (id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
-                  return false;
-                }
-                alarm_due = now.hour == alarm_time_var->hour && now.minute == alarm_time_var->minute;
-              }
-
-              if (!alarm_due) {
+              const uint32_t now_minute = uint32_t(now.timestamp / 60);
+              const uint32_t target_minute = uint32_t(id(next_alarm_epoch) / 60);
+              if (now_minute != target_minute) {
                 return false;
               }
-
-              const int minute_key = now.day_of_year * 1440 + now.hour * 60 + now.minute;
-              if (id(last_alarm_minute_key) == minute_key) {
+              if (id(last_alarm_minute_key) == int(target_minute)) {
                 return false;
               }
-              id(last_alarm_minute_key) = minute_key;
+              id(last_alarm_minute_key) = int(target_minute);
               ESP_LOGI("alarm", "Alarm trigger matched at %02d:%02d:%02d", now.hour, now.minute, now.second);
               return true;
           then:
@@ -678,13 +761,89 @@ interval:
           else:
             - if:
                 condition:
-                  lambda: "return id(alarm_flash_on);"
+                  lambda: |-
+                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0;
                 then:
                   - lambda: |-
-                      id(alarm_flash_on) = false;
+                      if (id(alarm_flash_on)) {
+                        id(alarm_flash_on) = false;
+                      }
+                      if (id(dismiss_feedback_until_ms) != 0 && millis() >= id(dismiss_feedback_until_ms)) {
+                        id(dismiss_feedback_until_ms) = 0;
+                      }
                   - script.execute: update_alarm_status_ui
 
 script:
+  - id: sync_next_alarm_state
+    then:
+      - lambda: |-
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
+          if (!now.is_valid() || !id(alarm_enabled)) {
+            id(next_alarm_available) = false;
+            id(next_alarm_epoch) = 0;
+            return;
+          }
+
+          if (id(next_ring_override_active)) {
+            if (id(next_ring_override_epoch) > uint32_t(now.timestamp)) {
+              id(next_alarm_available) = true;
+              id(next_alarm_epoch) = id(next_ring_override_epoch);
+              return;
+            }
+            id(next_ring_override_active) = false;
+            id(next_ring_override_epoch) = 0;
+          }
+
+          if (id(snooze_active)) {
+            int day_offset = (id(snooze_day_of_year) == now.day_of_year) ? 0 : 1;
+            const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
+            id(next_alarm_epoch) = uint32_t(midnight_epoch + (day_offset * 86400) + (id(snooze_hour) * 3600) + (id(snooze_minute) * 60));
+            id(next_alarm_available) = true;
+            return;
+          }
+
+          const auto weekday_alarm = id(weekday_alarm_time);
+          const auto weekend_alarm = id(weekend_alarm_time);
+          if (weekday_alarm == nullptr || weekend_alarm == nullptr) {
+            id(next_alarm_available) = false;
+            id(next_alarm_epoch) = 0;
+            return;
+          }
+
+          bool found = false;
+          bool skip_consumed = false;
+          for (int offset = 0; offset < 8; offset++) {
+            const int candidate_dow = ((now.day_of_week - 1 + offset) % 7) + 1;
+            auto candidate_alarm = (candidate_dow == 1 || candidate_dow == 7) ? weekend_alarm : weekday_alarm;
+            if (!skip_consumed && id(skip_next_ring)) {
+              skip_consumed = true;
+              continue;
+            }
+            const bool valid_time = offset > 0 ||
+                                    candidate_alarm->hour > now.hour ||
+                                    (candidate_alarm->hour == now.hour && candidate_alarm->minute > now.minute);
+            if (!valid_time) {
+              continue;
+            }
+            const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
+            id(next_alarm_epoch) = uint32_t(midnight_epoch + (offset * 86400) + (candidate_alarm->hour * 3600) + (candidate_alarm->minute * 60));
+            id(next_alarm_available) = true;
+            found = true;
+            break;
+          }
+
+          if (skip_consumed) {
+            id(skip_next_ring) = false;
+          }
+
+          if (!found) {
+            id(next_alarm_available) = false;
+            id(next_alarm_epoch) = 0;
+          }
+
   - id: clear_snooze
     then:
       - lambda: |-
@@ -695,43 +854,21 @@ script:
 
   - id: dismiss_alarm
     then:
+      - lambda: |-
+          id(dismiss_feedback_until_ms) = millis() + 3000;
       - script.execute: clear_snooze
       - script.execute: stop_alarm
 
   - id: sync_alarm_day_state
     then:
-      - lambda: |-
-          auto now = id(sntp_time).now();
-          if (!now.is_valid()) {
-            now = id(rtctime).now();
-          }
-          if (!now.is_valid()) {
-            return;
-          }
-          if (id(alarm_disabled_today) && id(alarm_disabled_day) != now.day_of_year) {
-            id(alarm_disabled_today) = false;
-            id(alarm_disabled_day) = -1;
-          }
+      - script.execute: sync_next_alarm_state
       - script.execute: update_alarm_status_ui
 
-  - id: toggle_alarm_for_today
+  - id: toggle_skip_next_ring
     then:
       - lambda: |-
-          auto now = id(sntp_time).now();
-          if (!now.is_valid()) {
-            now = id(rtctime).now();
-          }
-          if (!now.is_valid()) {
-            ESP_LOGW("alarm", "Skip-today toggle requested but current time is invalid");
-            return;
-          }
-          if (id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
-            id(alarm_disabled_today) = false;
-            id(alarm_disabled_day) = -1;
-          } else {
-            id(alarm_disabled_today) = true;
-            id(alarm_disabled_day) = now.day_of_year;
-          }
+          id(skip_next_ring) = !id(skip_next_ring);
+          ESP_LOGI("ui", "Skip next ring toggled to %d", id(skip_next_ring));
       - script.execute: update_alarm_status_ui
 
   - id: apply_active_brightness
@@ -782,6 +919,7 @@ script:
 
   - id: update_alarm_status_ui
     then:
+      - script.execute: sync_next_alarm_state
       - lvgl.label.update:
           id: snooze_button_label
           text: !lambda |-
@@ -791,28 +929,23 @@ script:
       - lvgl.label.update:
           id: alarm_label
           text: !lambda |-
-            auto alarm_time_var = id(alarm_time);
             static char alarm_buf[24];
-            if (alarm_time_var == nullptr) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Alarm --:--");
-              return alarm_buf;
-            }
             if (!id(alarm_enabled)) {
               snprintf(alarm_buf, sizeof(alarm_buf), "Alarm Off");
             } else if (id(alarm_ringing)) {
               snprintf(alarm_buf, sizeof(alarm_buf), "Alarm!");
+            } else if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              snprintf(alarm_buf, sizeof(alarm_buf), "Stopped");
             } else if (id(snooze_active)) {
               snprintf(alarm_buf, sizeof(alarm_buf), "Snoozing");
             } else {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Alarm %02d:%02d", alarm_time_var->hour, alarm_time_var->minute);
+              snprintf(alarm_buf, sizeof(alarm_buf), "Next Ring");
             }
             return alarm_buf;
       - lvgl.label.update:
           id: date_label
           text: !lambda |-
             static const char *const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-            static const char *const mon_names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
             static char date_buf[24];
             auto now = id(sntp_time).now();
             if (!now.is_valid()) {
@@ -821,14 +954,37 @@ script:
 
             if (!id(alarm_enabled)) {
               snprintf(date_buf, sizeof(date_buf), "Disabled");
+            } else if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              snprintf(date_buf, sizeof(date_buf), "Dismissed");
             } else if (id(snooze_active)) {
-              snprintf(date_buf, sizeof(date_buf), "Until %02d:%02d", id(snooze_hour), id(snooze_minute));
+              if (!now.is_valid()) {
+                snprintf(date_buf, sizeof(date_buf), "Until %02d:%02d", id(snooze_hour), id(snooze_minute));
+              } else if (id(snooze_day_of_year) == now.day_of_year) {
+                snprintf(date_buf, sizeof(date_buf), "Today %02d:%02d", id(snooze_hour), id(snooze_minute));
+              } else if (id(snooze_day_of_year) == now.day_of_year + 1) {
+                snprintf(date_buf, sizeof(date_buf), "Tomorrow %02d:%02d", id(snooze_hour), id(snooze_minute));
+              } else {
+                snprintf(date_buf, sizeof(date_buf), "Until %02d:%02d", id(snooze_hour), id(snooze_minute));
+              }
+            } else if (id(skip_next_ring)) {
+              snprintf(date_buf, sizeof(date_buf), "Skipped");
             } else if (!now.is_valid() || now.day_of_week < 1 || now.day_of_week > 7 || now.month < 1 || now.month > 12) {
               snprintf(date_buf, sizeof(date_buf), "--");
-            } else if (id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
-              snprintf(date_buf, sizeof(date_buf), "Skipped Today");
+            } else if (!id(next_alarm_available)) {
+                snprintf(date_buf, sizeof(date_buf), "No next ring");
             } else {
-              snprintf(date_buf, sizeof(date_buf), "%s, %s %2d", day_names[now.day_of_week - 1], mon_names[now.month - 1], now.day_of_month);
+              auto next_alarm = ESPTime::from_epoch_local(id(next_alarm_epoch));
+              int day_delta = next_alarm.day_of_year - now.day_of_year;
+              if (day_delta < 0) {
+                day_delta += 366;
+              }
+              if (day_delta == 0) {
+                snprintf(date_buf, sizeof(date_buf), "Today %02d:%02d", next_alarm.hour, next_alarm.minute);
+              } else if (day_delta == 1) {
+                snprintf(date_buf, sizeof(date_buf), "Tomorrow %02d:%02d", next_alarm.hour, next_alarm.minute);
+              } else {
+                snprintf(date_buf, sizeof(date_buf), "%s %02d:%02d", day_names[next_alarm.day_of_week - 1], next_alarm.hour, next_alarm.minute);
+              }
             }
             return date_buf;
       - lvgl.widget.update:
@@ -841,13 +997,16 @@ script:
             if (id(alarm_ringing)) {
               return id(alarm_flash_on) ? lv_color_hex(0xFF7043) : lv_color_hex(0xE53935);
             }
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              return lv_color_hex(0x43A047);
+            }
             if (id(snooze_active)) {
               return lv_color_hex(0x1E88E5);
             }
             if (!id(alarm_enabled)) {
               return lv_color_hex(0x616161);
             }
-            if (now.is_valid() && id(alarm_disabled_today) && id(alarm_disabled_day) == now.day_of_year) {
+            if (id(skip_next_ring)) {
               return lv_color_hex(0xFFD54F);
             }
             return lv_color_hex(0x000000);
@@ -861,7 +1020,7 @@ script:
                 then:
                   - lambda: |-
                       id(ring_controls_visible) = true;
-                  - lvgl.widget.hide: [alarm_status_circle]
+                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button]
                   - lvgl.widget.show: [snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
@@ -870,7 +1029,7 @@ script:
                 then:
                   - lambda: |-
                       id(ring_controls_visible) = false;
-                  - lvgl.widget.show: [alarm_status_circle]
+                  - lvgl.widget.show: [alarm_status_circle, center_tap_button]
                   - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label]
 
   - id: snooze_alarm
@@ -922,6 +1081,8 @@ script:
     then:
       - script.execute: clear_snooze
       - lambda: |-
+          id(next_ring_override_active) = false;
+          id(next_ring_override_epoch) = 0;
           id(snooze_minutes) = 10;
           id(alarm_ringing) = true;
           auto now = id(sntp_time).now();
