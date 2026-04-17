@@ -413,7 +413,7 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: "return id(alarm_ringing);"
+                lambda: "return id(alarm_ringing) || id(snooze_active);"
               then:
                 - script.execute: dismiss_alarm
           - script.execute: reset_idle_timer
@@ -979,11 +979,11 @@ script:
                 day_delta += 366;
               }
               if (day_delta == 0) {
-                snprintf(date_buf, sizeof(date_buf), "Today %02d:%02d", next_alarm.hour, next_alarm.minute);
+                snprintf(date_buf, sizeof(date_buf), "Today\n%02d:%02d", next_alarm.hour, next_alarm.minute);
               } else if (day_delta == 1) {
-                snprintf(date_buf, sizeof(date_buf), "Tomorrow %02d:%02d", next_alarm.hour, next_alarm.minute);
+                snprintf(date_buf, sizeof(date_buf), "Tomorrow\n%02d:%02d", next_alarm.hour, next_alarm.minute);
               } else {
-                snprintf(date_buf, sizeof(date_buf), "%s %02d:%02d", day_names[next_alarm.day_of_week - 1], next_alarm.hour, next_alarm.minute);
+                snprintf(date_buf, sizeof(date_buf), "%s\n%02d:%02d", day_names[next_alarm.day_of_week - 1], next_alarm.hour, next_alarm.minute);
               }
             }
             return date_buf;
