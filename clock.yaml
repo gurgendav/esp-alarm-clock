@@ -476,7 +476,7 @@ display:
     data_rate: 40MHz
 
 lvgl:
-  rotation: 270
+  rotation: 90
   displays:
     - round_display
   touchscreens:
@@ -827,9 +827,10 @@ script:
               skip_consumed = true;
               continue;
             }
+            const int now_total_minutes = now.hour * 60 + now.minute;
+            const int candidate_total_minutes = candidate_alarm->hour * 60 + candidate_alarm->minute;
             const bool valid_time = offset > 0 ||
-                                    candidate_alarm->hour > now.hour ||
-                                    (candidate_alarm->hour == now.hour && candidate_alarm->minute > now.minute);
+                                    candidate_total_minutes >= now_total_minutes;
             if (!valid_time) {
               continue;
             }
