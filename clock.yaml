@@ -632,10 +632,11 @@ lvgl:
             id: sleep_hint_label
             hidden: true
             align: CENTER
-            y: -82
+            y: 68
+            text_font: montserrat_18
             text_align: center
-            text_color: 0xFFB300
-            text: "Sleep"
+            text_color: 0xE53935
+            text: ""
         - obj:
             id: home_menu_panel
             hidden: true
@@ -1137,6 +1138,27 @@ script:
             static char snooze_buf[24];
             snprintf(snooze_buf, sizeof(snooze_buf), "Snooze\n%d min", id(snooze_minutes));
             return snooze_buf;
+      - lvgl.label.update:
+          id: sleep_hint_label
+          text: !lambda |-
+            static char sleep_buf[16];
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid() || !id(alarm_enabled) || !id(next_alarm_available) || id(snooze_active)) {
+              snprintf(sleep_buf, sizeof(sleep_buf), "");
+              return sleep_buf;
+            }
+            const int32_t seconds_until_alarm = int32_t(id(next_alarm_epoch)) - int32_t(now.timestamp);
+            if (seconds_until_alarm <= 0 || seconds_until_alarm > (8 * 3600)) {
+              snprintf(sleep_buf, sizeof(sleep_buf), "");
+              return sleep_buf;
+            }
+            const int hours = seconds_until_alarm / 3600;
+            const int minutes = (seconds_until_alarm % 3600) / 60;
+            snprintf(sleep_buf, sizeof(sleep_buf), "%dh %02dm", hours, minutes);
+            return sleep_buf;
       - lvgl.label.update:
           id: alarm_label
           text: !lambda |-
