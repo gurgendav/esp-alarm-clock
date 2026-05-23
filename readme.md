@@ -151,9 +151,13 @@ Before flashing, you will probably want to adjust:
 
 - device name and friendly name
 - Wi-Fi credentials in `secrets.yaml`
-- timezone
+- timezone via `timezone`
 - `alarm_audio_player_entity`
-- any Home Assistant script names or media targets
+- Home Assistant action/entity substitutions:
+  - `alarm_audio_start_action`
+  - `alarm_audio_stop_action`
+  - `home_lights_off_action`
+  - `home_lights_off_entity`
 
 This repo is currently tailored to:
 
