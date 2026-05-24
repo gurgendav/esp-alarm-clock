@@ -191,42 +191,27 @@ switch:
     icon: "mdi:alarm-check"
     restore_mode: RESTORE_DEFAULT_ON
     lambda: |-
-      return id(alarm_enabled);
+      return id(alarm_enabled) && !id(away_mode);
     turn_on_action:
       - lambda: |-
           id(alarm_enabled) = true;
+          id(away_mode) = false;
           ESP_LOGI("alarm", "Alarm enabled");
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
     turn_off_action:
       - lambda: |-
           id(alarm_enabled) = false;
-          ESP_LOGI("alarm", "Alarm disabled");
-      - script.execute: clear_snooze
-      - script.execute: stop_alarm
-      - script.execute: update_minutes_hand
-      - script.execute: reset_idle_timer
-  - platform: template
-    id: away_mode_switch
-    name: "Away Mode"
-    icon: "mdi:home-export-outline"
-    restore_mode: RESTORE_DEFAULT_OFF
-    lambda: |-
-      return id(away_mode);
-    turn_on_action:
-      - lambda: |-
           id(away_mode) = true;
           id(skip_next_ring) = false;
           id(skip_next_ring_epoch) = 0;
           id(next_ring_override_active) = false;
           id(next_ring_override_epoch) = 0;
-          ESP_LOGI("alarm", "Away mode enabled; alarms disabled until away mode is turned off");
+          ESP_LOGI("alarm", "Alarm disabled / away mode enabled");
       - script.execute: clear_snooze
       - script.execute: stop_alarm
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
-    turn_off_action:
-      - script.execute: disable_away_mode
 
 button:
   - platform: template
@@ -986,11 +971,12 @@ script:
   - id: disable_away_mode
     then:
       - lambda: |-
-          if (id(away_mode)) {
-            ESP_LOGI("alarm", "Away mode disabled");
+          if (id(away_mode) || !id(alarm_enabled)) {
+            ESP_LOGI("alarm", "Away mode disabled; alarm enabled");
           }
           id(away_mode) = false;
-          id(away_mode_switch).publish_state(false);
+          id(alarm_enabled) = true;
+          id(alarm_enabled_switch).publish_state(true);
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
 
