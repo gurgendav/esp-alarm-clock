@@ -130,7 +130,7 @@ You must also enable ESPHome devices to perform Home Assistant actions in the ES
 
 ## Optional Morning Briefing
 
-When the alarm is dismissed/stopped, the device can call a Home Assistant script to speak a morning briefing on the same speaker.
+When the alarm is dismissed/stopped, the device can call a Home Assistant script. The contents of that script are intentionally left up to the user.
 
 The ESPHome config expects:
 
@@ -140,35 +140,7 @@ substitutions:
   morning_briefing_player_entity: media_player.example_speaker
 ```
 
-A starter Home Assistant package is included at:
-
-```text
-home-assistant/packages/alarmv1_morning_briefing.yaml.example
-```
-
-It fetches detailed weather on demand with `weather.get_forecasts` and announces:
-
-- current condition and temperature
-- today's high and low
-- whether rain is expected soon, including approximate time/probability when available
-- commute duration only on weekday mornings when your configured presence entity is home
-
-Commute lookup is intentionally not a polling sensor. Run the local route service and let the HA package call it only from the briefing script:
-
-```sh
-python3 home-assistant/scripts/yandex_route_service.py \
-  --host 0.0.0.0 \
-  --port 8765 \
-  --route-url 'https://yandex.com/maps/?rtext=START_LAT%2CSTART_LON~END_LAT%2CEND_LON&rtt=auto'
-```
-
-Quick one-shot verification:
-
-```sh
-python3 home-assistant/scripts/yandex_route_service.py --once
-```
-
-Run the route service somewhere reachable from Home Assistant, keep your private route URL in `ALARMV1_YANDEX_ROUTE_URL`, and point the example package `rest_command` at that local `/route` endpoint. Copy the package into Home Assistant, replace placeholder entity IDs, and expose `script.alarmv1_morning_briefing` before daily use.
+Create `script.alarmv1_morning_briefing` in Home Assistant if you want a wake-up briefing. It receives `media_player_entity_id` as script data, so your script can choose whether to speak weather, commute, calendar, news, or nothing at all.
 
 ## Hardware
 
