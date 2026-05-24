@@ -474,6 +474,7 @@ touchscreen:
   id: dial_touchscreen
   i2c_id: internal_i2c
   address: 0x38
+  interrupt_pin: GPIO14
   touch_timeout: 250ms
   on_touch:
     - if:
