@@ -1251,7 +1251,7 @@ script:
             }
 
             if (!id(alarm_enabled)) {
-              snprintf(date_buf, sizeof(date_buf), "Tap center\nto return");
+              snprintf(date_buf, sizeof(date_buf), "Tap to\nresume");
             } else if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               snprintf(date_buf, sizeof(date_buf), "Dismissed");
             } else if (id(snooze_active)) {
