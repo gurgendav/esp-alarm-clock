@@ -13,8 +13,6 @@ esphome:
   friendly_name: AlarmV1
   min_version: 2025.11.0
   name_add_mac_suffix: false
-  includes:
-    - src/alarm_helpers.h
   on_boot:
     priority: -10
     then:
@@ -270,7 +268,10 @@ sensor:
             return;
           }
 
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           if (!now.is_valid() || !id(next_alarm_available)) {
             ESP_LOGW("alarm", "Ignoring clockwise encoder turn because next ring is unavailable");
             return;
@@ -319,7 +320,10 @@ sensor:
             return;
           }
 
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           if (!now.is_valid() || !id(next_alarm_available)) {
             ESP_LOGW("alarm", "Ignoring anticlockwise encoder turn because next ring is unavailable");
             return;
@@ -387,7 +391,10 @@ text_sensor:
     device_class: timestamp
     update_interval: 30s
     lambda: |-
-      auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+      auto now = id(sntp_time).now();
+      if (!now.is_valid()) {
+        now = id(rtctime).now();
+      }
       if (!now.is_valid()) {
         return {""};
       }
@@ -768,7 +775,10 @@ interval:
       - lvgl.indicator.update:
           id: secs_hand
           value: !lambda |-
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (!now.is_valid()) {
               return 0.0f;
             }
@@ -779,7 +789,10 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           if (!now.is_valid()) {
             return;
           }
@@ -815,7 +828,10 @@ interval:
       - if:
           condition:
             lambda: |-
-              auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+              auto now = id(sntp_time).now();
+              if (!now.is_valid()) {
+                now = id(rtctime).now();
+              }
               if (!now.is_valid()) {
                 return false;
               }
@@ -882,7 +898,10 @@ script:
   - id: sync_next_alarm_state
     then:
       - lambda: |-
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           if (!now.is_valid() || !id(alarm_enabled) || id(away_mode)) {
             id(next_alarm_available) = false;
             id(next_alarm_epoch) = 0;
@@ -1069,7 +1088,10 @@ script:
             if (id(alarm_ringing)) {
               return 1.0f;
             }
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (now.is_valid() && (now.hour >= 23 || now.hour < 7)) {
               return 0.30f;
             }
@@ -1083,7 +1105,10 @@ script:
             if (id(alarm_ringing)) {
               return 1.0f;
             }
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (now.is_valid() && (now.hour >= 23 || now.hour < 7)) {
               return 0.08f;
             }
@@ -1169,7 +1194,10 @@ script:
           id: sleep_hint_label
           text: !lambda |-
             static char sleep_buf[16];
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (!now.is_valid() || !id(alarm_enabled) || id(away_mode) || !id(next_alarm_available) || id(snooze_active)) {
               snprintf(sleep_buf, sizeof(sleep_buf), "");
               return sleep_buf;
@@ -1227,7 +1255,10 @@ script:
           text: !lambda |-
             static const char *const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
             static char date_buf[24];
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
 
             if (id(away_mode)) {
               snprintf(date_buf, sizeof(date_buf), "Tap center\nto return");
@@ -1269,7 +1300,10 @@ script:
       - lvgl.widget.update:
           id: alarm_status_circle
           bg_color: !lambda |-
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (id(alarm_ringing)) {
               return id(alarm_flash_on) ? lv_color_hex(0xFF7043) : lv_color_hex(0xE53935);
             }
@@ -1322,7 +1356,10 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+                          auto now = id(sntp_time).now();
+                          if (!now.is_valid()) {
+                            now = id(rtctime).now();
+                          }
                           if (!now.is_valid() || !id(alarm_enabled) || id(away_mode) || !id(next_alarm_available) || id(snooze_active)) {
                             return false;
                           }
@@ -1338,12 +1375,15 @@ script:
       minutes: int
     then:
       - lambda: |-
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           if (!now.is_valid()) {
             ESP_LOGW("alarm", "Snooze requested but current time is invalid");
             return;
           }
-          auto snooze_until = alarm_clock::add_minutes(now, minutes);
+          auto snooze_until = esphome::ESPTime::from_epoch_local(now.timestamp + (minutes * 60));
           id(snooze_active) = true;
           id(snooze_day_of_year) = snooze_until.day_of_year;
           id(snooze_hour) = snooze_until.hour;
@@ -1374,7 +1414,10 @@ script:
           id(snooze_minutes) = 10;
           id(alarm_ringing) = true;
           id(home_menu_visible) = false;
-          auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
           ESP_LOGI("alarm", "Starting alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
       - script.execute: apply_active_brightness
       - script.execute: update_minutes_hand
@@ -1386,7 +1429,10 @@ script:
     then:
       - lambda: |-
           if (id(alarm_ringing)) {
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             ESP_LOGI("alarm", "Stopping alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
           }
           id(alarm_ringing) = false;
@@ -1440,7 +1486,10 @@ script:
       - lvgl.indicator.update:
           id: hour_hand
           value: !lambda |-
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (!now.is_valid()) {
               return 0.0f;
             }
@@ -1448,7 +1497,10 @@ script:
       - lvgl.indicator.update:
           id: minute_hand
           value: !lambda |-
-            auto now = alarm_clock::current_time(id(sntp_time), id(rtctime));
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
             if (!now.is_valid()) {
               return 0.0f;
             }
