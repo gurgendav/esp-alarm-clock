@@ -84,7 +84,7 @@ The current ESPHome config expects:
 
 ```yaml
 substitutions:
-  alarm_audio_player_entity: media_player.living_room_speaker_2
+  alarm_audio_player_entity: media_player.example_speaker
 ```
 
 When the alarm starts:
@@ -105,13 +105,13 @@ alias: AlarmV1 Start Alarm Audio
 sequence:
   - action: media_player.volume_set
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       volume_level: 0.8
 
   - action: music_assistant.play_media
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       media_id: Techno
       media_type: playlist
@@ -121,7 +121,7 @@ sequence:
 
   - action: media_player.shuffle_set
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       shuffle: true
 ```
@@ -137,7 +137,7 @@ The ESPHome config expects:
 ```yaml
 substitutions:
   morning_briefing_action: script.alarmv1_morning_briefing
-  morning_briefing_player_entity: media_player.living_room_speaker_2
+  morning_briefing_player_entity: media_player.example_speaker
 ```
 
 A starter Home Assistant package is included at:
@@ -151,7 +151,7 @@ It fetches detailed weather on demand with `weather.get_forecasts` and announces
 - current condition and temperature
 - today's high and low
 - whether rain is expected soon, including approximate time/probability when available
-- commute duration only on weekday mornings while Gurgen is home
+- commute duration only on weekday mornings when your configured presence entity is home
 
 Commute lookup is intentionally not a polling sensor. Run the local route service and let the HA package call it only from the briefing script:
 
@@ -159,7 +159,7 @@ Commute lookup is intentionally not a polling sensor. Run the local route servic
 python3 home-assistant/scripts/yandex_route_service.py \
   --host 0.0.0.0 \
   --port 8765 \
-  --route-url 'https://yandex.com/maps/?rtext=40.177628%2C44.512546~40.184530%2C44.501020&rtt=auto'
+  --route-url 'https://yandex.com/maps/?rtext=START_LAT%2CSTART_LON~END_LAT%2CEND_LON&rtt=auto'
 ```
 
 Quick one-shot verification:
@@ -168,7 +168,7 @@ Quick one-shot verification:
 python3 home-assistant/scripts/yandex_route_service.py --once
 ```
 
-When running this service from the Hermes Agent Home Assistant add-on, Home Assistant should call it through the add-on DNS name, for example `http://0a6523c6-hermes-agent.local.hass.io:8765/route`. Copy the package into Home Assistant, adjust the `rest_command` URL if your add-on hostname differs, and expose `script.alarmv1_morning_briefing` before daily use.
+Run the route service somewhere reachable from Home Assistant, keep your private route URL in `ALARMV1_YANDEX_ROUTE_URL`, and point the example package `rest_command` at that local `/route` endpoint. Copy the package into Home Assistant, replace placeholder entity IDs, and expose `script.alarmv1_morning_briefing` before daily use.
 
 ## Hardware
 
@@ -203,7 +203,7 @@ Before flashing, you will probably want to adjust:
 
 This repo is currently tailored to:
 
-- `Asia/Yerevan`
+- `Etc/UTC`
 - Home Assistant
 - Music Assistant
 - a Chromecast-style media player

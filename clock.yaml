@@ -1,12 +1,12 @@
 substitutions:
-  alarm_audio_player_entity: media_player.living_room_speaker_2
+  alarm_audio_player_entity: media_player.example_speaker
   alarm_audio_start_action: script.alarmv1_start_alarm_audio
   alarm_audio_stop_action: media_player.media_stop
   morning_briefing_action: script.alarmv1_morning_briefing
-  morning_briefing_player_entity: media_player.living_room_speaker_2
+  morning_briefing_player_entity: media_player.example_speaker
   home_lights_off_action: light.turn_off
   home_lights_off_entity: all
-  timezone: Asia/Yerevan
+  timezone: Etc/UTC
 
 esphome:
   name: esphome-web-56058c

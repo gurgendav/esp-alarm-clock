@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
-DEFAULT_ROUTE_URL = "https://yandex.com/maps/?rtext=40.177628%2C44.512546~40.184530%2C44.501020&rtt=auto"
+DEFAULT_ROUTE_URL = ""
 
 
 class TextExtractor(HTMLParser):
@@ -239,7 +239,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="AlarmV1 on-demand Yandex route HTTP service")
     parser.add_argument("--host", default=os.environ.get("ALARMV1_ROUTE_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("ALARMV1_ROUTE_PORT", "8765")))
-    parser.add_argument("--route-url", default=os.environ.get("ALARMV1_YANDEX_ROUTE_URL", DEFAULT_ROUTE_URL))
+    parser.add_argument(
+        "--route-url",
+        default=os.environ.get("ALARMV1_YANDEX_ROUTE_URL", DEFAULT_ROUTE_URL),
+        help="Yandex Maps route URL. Prefer ALARMV1_YANDEX_ROUTE_URL so private coordinates stay out of git.",
+    )
     parser.add_argument("--chromium", default=os.environ.get("CHROMIUM_PATH"))
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("ALARMV1_ROUTE_TIMEOUT", "60")))
     parser.add_argument("--budget-ms", type=int, default=int(os.environ.get("ALARMV1_ROUTE_BUDGET_MS", "30000")))
@@ -247,6 +251,8 @@ def main() -> int:
     args = parser.parse_args()
 
     chrome = chromium_path(args.chromium)
+    if not args.route_url:
+        parser.error("--route-url or ALARMV1_YANDEX_ROUTE_URL is required")
     if args.once:
         print(json.dumps(route_response(scrape_route(args.route_url, chrome, args.timeout, args.budget_ms)), ensure_ascii=False, indent=2))
         return 0
