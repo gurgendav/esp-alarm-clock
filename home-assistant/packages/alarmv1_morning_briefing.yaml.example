@@ -3,39 +3,91 @@
 # ESPHome calls script.alarmv1_morning_briefing when the alarm is deliberately
 # dismissed/stopped, not when it is snoozed or auto-times out.
 #
-# This example is tailored to the current HA setup discovered for AlarmV1:
+# Approved architecture:
+# - no polling commute sensor
+# - detailed weather is fetched on-demand at alarm-dismiss time
+# - commute is fetched on-demand at alarm-dismiss time via a local Yandex route service
+#
+# Current HA defaults discovered for AlarmV1:
 # - Yandex Pogoda weather: weather.kievyan_pogoda
 # - Presence gate: person.gurgen == home
 # - Speaker/TTS: media_player.living_room_speaker_2 + tts.google_translate_en_com
 # - Work destination: 40.184530,44.501020 (Yerevan, Dzorap Street 70/3)
 #
-# Commute lookup is intentionally on-demand inside the script. It uses the
-# built-in Waze Travel Time integration action with realtime=true, so there is
-# live traffic data and no paid Yandex Maps key.
-#
-# Prerequisite: add the Home Assistant "Waze Travel Time" integration once from
-# Settings → Devices & services. Any placeholder origin/destination is fine;
-# the script below calls waze_travel_time.get_travel_times directly.
+# Prerequisite for commute:
+#   Run home-assistant/scripts/yandex_route_service.py somewhere reachable from HA.
+#   Default URL here assumes it listens on http://127.0.0.1:8765/route and has the
+#   Home -> Work Yandex Maps route configured as its default route.
+
+input_boolean:
+  alarmv1_morning_briefing_enabled:
+    name: AlarmV1 Morning Briefing Enabled
+    icon: mdi:weather-sunset-up
+    initial: true
+  alarmv1_commute_briefing_enabled:
+    name: AlarmV1 Commute Briefing Enabled
+    icon: mdi:car-clock
+    initial: true
+
+input_datetime:
+  alarmv1_morning_briefing_last_run:
+    name: AlarmV1 Morning Briefing Last Run
+    has_date: true
+    has_time: true
+
+rest_command:
+  alarmv1_yandex_route_home_to_work:
+    url: "http://127.0.0.1:8765/route"
+    method: get
+    timeout: 75
 
 script:
   alarmv1_morning_briefing:
     alias: AlarmV1 Morning Briefing
-    mode: restart
+    mode: single
     fields:
       media_player_entity_id:
         description: Speaker/media player for the spoken briefing
         example: media_player.living_room_speaker_2
     sequence:
+      - variables:
+          briefing_enabled: "{{ is_state('input_boolean.alarmv1_morning_briefing_enabled', 'on') }}"
+          last_run_raw: "{{ states('input_datetime.alarmv1_morning_briefing_last_run') }}"
+          last_run_age_seconds: >-
+            {% if last_run_raw not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+              {{ as_timestamp(now()) - as_timestamp(last_run_raw) }}
+            {% else %}
+              999999
+            {% endif %}
+          should_run: "{{ briefing_enabled and (last_run_age_seconds | float(999999) > 600) }}"
+
+      - condition: template
+        value_template: "{{ should_run }}"
+
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.alarmv1_morning_briefing_last_run
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.kievyan_pogoda
+        data:
+          type: daily
+        response_variable: alarmv1_daily_weather
+
       - action: weather.get_forecasts
         target:
           entity_id: weather.kievyan_pogoda
         data:
           type: hourly
-        response_variable: alarmv1_weather
+        response_variable: alarmv1_hourly_weather
 
       - variables:
           commute_should_run: >-
-            {{ now().isoweekday() <= 5
+            {{ is_state('input_boolean.alarmv1_commute_briefing_enabled', 'on')
+               and now().isoweekday() <= 5
                and now().hour < 11
                and is_state('person.gurgen', 'home') }}
 
@@ -43,52 +95,86 @@ script:
           - condition: template
             value_template: "{{ commute_should_run }}"
         then:
-          - action: waze_travel_time.get_travel_times
-            data:
-              origin: "{{ state_attr('zone.home', 'latitude') }}, {{ state_attr('zone.home', 'longitude') }}"
-              destination: "40.184530, 44.501020"
-              region: eu
-              units: metric
-              vehicle_type: car
-              realtime: true
-            response_variable: alarmv1_route
+          - action: rest_command.alarmv1_yandex_route_home_to_work
+            response_variable: alarmv1_route_response
         else:
           - variables:
-              alarmv1_route:
-                waze_travel_time.get_travel_times:
-                  routes: []
+              alarmv1_route_response:
+                status: 0
+                content: '{"ok": false, "error": "commute skipped"}'
 
       - variables:
-          forecast: >-
-            {{ alarmv1_weather['weather.kievyan_pogoda'].forecast[0]
-               if alarmv1_weather.get('weather.kievyan_pogoda') and
-                  alarmv1_weather['weather.kievyan_pogoda'].forecast
-               else {} }}
-          condition: "{{ forecast.get('condition', states('weather.kievyan_pogoda')) }}"
-          temperature: "{{ forecast.get('temperature', state_attr('weather.kievyan_pogoda', 'temperature')) }}"
-          apparent_temperature: "{{ state_attr('weather.kievyan_pogoda', 'apparent_temperature') }}"
-          precipitation: "{{ forecast.get('precipitation', '') }}"
-          commute_routes: >-
-            {{ alarmv1_route.get('waze_travel_time.get_travel_times', {}).get('routes', [])
-               if alarmv1_route is defined else [] }}
-          commute_minutes: >-
-            {{ commute_routes[0].duration
-               if commute_routes else 0 }}
-          commute_text: >-
-            {% if commute_should_run and commute_minutes | float(0) > 0 %}
-              The Waze traffic estimate to work is about {{ commute_minutes | float | round(0) }} minutes.
-            {% elif commute_should_run %}
-              I could not get the current Waze traffic estimate to work.
+          daily_forecast: >-
+            {{ alarmv1_daily_weather['weather.kievyan_pogoda'].forecast
+               if alarmv1_daily_weather.get('weather.kievyan_pogoda') and
+                  alarmv1_daily_weather['weather.kievyan_pogoda'].forecast
+               else [] }}
+          hourly_forecast: >-
+            {{ alarmv1_hourly_weather['weather.kievyan_pogoda'].forecast
+               if alarmv1_hourly_weather.get('weather.kievyan_pogoda') and
+                  alarmv1_hourly_weather['weather.kievyan_pogoda'].forecast
+               else [] }}
+          today: "{{ daily_forecast[0] if daily_forecast | count > 0 else {} }}"
+          current_condition: "{{ states('weather.kievyan_pogoda') | replace('_', ' ') }}"
+          current_temperature: "{{ state_attr('weather.kievyan_pogoda', 'temperature') }}"
+          today_high: "{{ today.get('temperature', '') }}"
+          today_low: "{{ today.get('templow', today.get('temperature_low', '')) }}"
+          today_condition: "{{ today.get('condition', current_condition) | replace('_', ' ') }}"
+          rain_hour: >-
+            {% set ns = namespace(item={}) %}
+            {% for item in hourly_forecast[:18] %}
+              {% set precip = item.get('precipitation', 0) | float(0) %}
+              {% set prob = item.get('precipitation_probability', 0) | float(0) %}
+              {% set condition = item.get('condition', '') %}
+              {% if ns.item == {} and (precip > 0 or prob >= 40 or condition in ['rainy', 'pouring', 'lightning-rainy', 'snowy-rainy']) %}
+                {% set ns.item = item %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.item }}
+          rain_time: >-
+            {% if rain_hour and rain_hour.get('datetime') %}
+              {{ as_timestamp(rain_hour.get('datetime')) | timestamp_custom('%-I %p') }}
             {% else %}
-              Commute check skipped because it is not a weekday morning while you are home.
+              
             {% endif %}
+          rain_probability: "{{ rain_hour.get('precipitation_probability', '') if rain_hour else '' }}"
+          rain_amount: "{{ rain_hour.get('precipitation', '') if rain_hour else '' }}"
+          route_json: >-
+            {{ alarmv1_route_response.content | from_json
+               if alarmv1_route_response is defined and alarmv1_route_response.content is defined
+               else {'ok': false} }}
+          commute_minutes: "{{ route_json.get('duration_minutes', 0) | int(0) }}"
+          commute_arrival: "{{ route_json.get('arrival', '') }}"
+          commute_distance: "{{ route_json.get('distance', '') }}"
           weather_text: >-
-            Today's Yandex weather: {{ condition }}{% if temperature not in ['unknown', 'unavailable', 'none', 'None', ''] %}, {{ temperature | round(0) }} degrees{% endif %}{% if apparent_temperature not in ['unknown', 'unavailable', 'none', 'None', ''] %}, feels like {{ apparent_temperature | round(0) }}{% endif %}{% if precipitation not in ['', none] %}, precipitation {{ precipitation }} millimeters{% endif %}.
+            Good morning. It is currently
+            {% if current_temperature not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+              {{ current_temperature | round(0) }} degrees and {{ current_condition }}.
+            {% else %}
+              {{ current_condition }}.
+            {% endif %}
+            Today will be {{ today_condition }}
+            {% if today_high not in ['unknown', 'unavailable', 'none', 'None', ''] %}, with a high of {{ today_high | round(0) }}{% endif %}
+            {% if today_low not in ['unknown', 'unavailable', 'none', 'None', ''] %} and a low of {{ today_low | round(0) }}{% endif %}.
+            {% if rain_hour %}
+              Rain is expected around {{ rain_time | trim }}{% if rain_probability not in ['', none] %}, about {{ rain_probability | round(0) }} percent chance{% endif %}{% if rain_amount not in ['', none] and rain_amount | float(0) > 0 %}, {{ rain_amount }} millimeters{% endif %}.
+            {% else %}
+              No rain expected in the next 18 hours.
+            {% endif %}
+          commute_text: >-
+            {% if commute_should_run and route_json.get('ok') and commute_minutes > 0 %}
+              Your drive to work is about {{ commute_minutes }} minutes{% if commute_arrival %}, arriving around {{ commute_arrival }}{% endif %}{% if commute_distance %}, {{ commute_distance }}{% endif %}.
+            {% elif commute_should_run %}
+              I could not check the current drive to work.
+            {% else %}
+              
+            {% endif %}
+          briefing_message: "{{ weather_text }} {{ commute_text }}"
 
       - action: tts.speak
         target:
           entity_id: tts.google_translate_en_com
         data:
           media_player_entity_id: "{{ media_player_entity_id | default('media_player.living_room_speaker_2') }}"
-          message: "{{ weather_text }} {{ commute_text }}"
+          message: "{{ briefing_message | replace('\n', ' ') | regex_replace(' +', ' ') | trim }}"
           cache: false

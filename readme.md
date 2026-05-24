@@ -146,12 +146,29 @@ A starter Home Assistant package is included at:
 home-assistant/packages/alarmv1_morning_briefing.yaml.example
 ```
 
-It is designed to announce on workdays only and expects Yandex-backed entities for:
+It fetches detailed weather on demand with `weather.get_forecasts` and announces:
 
-- today's weather
-- route/traffic time from home to work
+- current condition and temperature
+- today's high and low
+- whether rain is expected soon, including approximate time/probability when available
+- commute duration only on weekday mornings while Gurgen is home
 
-Copy it into Home Assistant, adjust the weather/commute entities, and expose `script.alarmv1_morning_briefing` before enabling this in daily use.
+Commute lookup is intentionally not a polling sensor. Run the local route service and let the HA package call it only from the briefing script:
+
+```sh
+python3 home-assistant/scripts/yandex_route_service.py \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --route-url 'https://yandex.com/maps/?rtext=40.177628%2C44.512546~40.184530%2C44.501020&rtt=auto'
+```
+
+Quick one-shot verification:
+
+```sh
+python3 home-assistant/scripts/yandex_route_service.py --once
+```
+
+Copy the package into Home Assistant, ensure the route service is reachable from HA at `http://127.0.0.1:8765/route` or adjust the `rest_command` URL, and expose `script.alarmv1_morning_briefing` before daily use.
 
 ## Hardware
 
