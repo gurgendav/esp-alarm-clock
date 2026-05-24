@@ -2,6 +2,8 @@ substitutions:
   alarm_audio_player_entity: media_player.living_room_speaker_2
   alarm_audio_start_action: script.alarmv1_start_alarm_audio
   alarm_audio_stop_action: media_player.media_stop
+  morning_briefing_action: script.alarmv1_morning_briefing
+  morning_briefing_player_entity: media_player.living_room_speaker_2
   home_lights_off_action: light.turn_off
   home_lights_off_entity: all
   timezone: Asia/Yerevan
@@ -986,6 +988,7 @@ script:
           id(dismiss_feedback_until_ms) = millis() + 3000;
       - script.execute: clear_snooze
       - script.execute: stop_alarm
+      - script.execute: play_morning_briefing_on_ha
 
   - id: sync_alarm_day_state
     then:
@@ -1125,6 +1128,21 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant alarm audio stop failed: %s", error.c_str());
+
+  - id: play_morning_briefing_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant morning briefing on %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: ${morning_briefing_action}
+          data:
+            media_player_entity_id: ${morning_briefing_player_entity}
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant morning briefing");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning briefing failed: %s", error.c_str());
 
   - id: reset_idle_timer
     mode: restart

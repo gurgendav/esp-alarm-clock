@@ -128,6 +128,31 @@ sequence:
 
 You must also enable ESPHome devices to perform Home Assistant actions in the ESPHome integration settings.
 
+## Optional Morning Briefing
+
+When the alarm is dismissed/stopped, the device can call a Home Assistant script to speak a morning briefing on the same speaker.
+
+The ESPHome config expects:
+
+```yaml
+substitutions:
+  morning_briefing_action: script.alarmv1_morning_briefing
+  morning_briefing_player_entity: media_player.living_room_speaker_2
+```
+
+A starter Home Assistant package is included at:
+
+```text
+home-assistant/packages/alarmv1_morning_briefing.yaml.example
+```
+
+It is designed to announce on workdays only and expects Yandex-backed entities for:
+
+- today's weather
+- route/traffic time from home to work
+
+Copy it into Home Assistant, adjust the weather/commute entities, and expose `script.alarmv1_morning_briefing` before enabling this in daily use.
+
 ## Hardware
 
 This project is built for:

@@ -1,0 +1,56 @@
+# Example Home Assistant package for AlarmV1 wake-up briefing.
+#
+# Install as a package or copy the script into scripts.yaml, then adjust:
+# - weather.alarmv1_yandex_weather: a Yandex-backed weather entity
+# - sensor.alarmv1_yandex_work_commute_minutes: Yandex-backed route/traffic ETA to work
+# - tts.google_translate_en_com: your TTS engine if different
+#
+# The ESPHome device calls script.alarmv1_morning_briefing when the alarm is
+# dismissed/stopped, not when it is snoozed or auto-times out.
+
+script:
+  alarmv1_morning_briefing:
+    alias: AlarmV1 Morning Briefing
+    mode: restart
+    fields:
+      media_player_entity_id:
+        description: Speaker/media player for the spoken briefing
+        example: media_player.living_room_speaker_2
+    sequence:
+      # Only announce commute information on workdays.
+      - condition: template
+        value_template: "{{ now().isoweekday() <= 5 }}"
+
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.alarmv1_yandex_weather
+        data:
+          type: hourly
+        response_variable: alarmv1_weather
+
+      - variables:
+          forecast: >-
+            {{ alarmv1_weather['weather.alarmv1_yandex_weather'].forecast[0]
+               if alarmv1_weather.get('weather.alarmv1_yandex_weather') and
+                  alarmv1_weather['weather.alarmv1_yandex_weather'].forecast
+               else {} }}
+          condition: "{{ forecast.get('condition', states('weather.alarmv1_yandex_weather')) }}"
+          temperature: "{{ forecast.get('temperature', state_attr('weather.alarmv1_yandex_weather', 'temperature')) }}"
+          precipitation: "{{ forecast.get('precipitation', '') }}"
+          commute_minutes: "{{ states('sensor.alarmv1_yandex_work_commute_minutes') }}"
+          commute_text: >-
+            {% if commute_minutes not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+              The drive to work should take about {{ commute_minutes | round(0) }} minutes.
+            {% else %}
+              I could not get the current Yandex route time to work.
+            {% endif %}
+          weather_text: >-
+            Today's weather from Yandex: {{ condition }}{% if temperature not in ['unknown', 'unavailable', 'none', 'None', ''] %}, {{ temperature | round(0) }} degrees{% endif %}{% if precipitation not in ['', none] %}, precipitation {{ precipitation }} millimeters{% endif %}.
+
+      - action: tts.speak
+        target:
+          entity_id: tts.google_translate_en_com
+        data:
+          media_player_entity_id: "{{ media_player_entity_id | default('media_player.living_room_speaker_2') }}"
+          message: "{{ weather_text }} {{ commute_text }}"
+          cache: false
