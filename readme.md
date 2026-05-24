@@ -157,7 +157,7 @@ Commute lookup is intentionally not a polling sensor. Run the local route servic
 
 ```sh
 python3 home-assistant/scripts/yandex_route_service.py \
-  --host 127.0.0.1 \
+  --host 0.0.0.0 \
   --port 8765 \
   --route-url 'https://yandex.com/maps/?rtext=40.177628%2C44.512546~40.184530%2C44.501020&rtt=auto'
 ```
@@ -168,7 +168,7 @@ Quick one-shot verification:
 python3 home-assistant/scripts/yandex_route_service.py --once
 ```
 
-Copy the package into Home Assistant, ensure the route service is reachable from HA at `http://127.0.0.1:8765/route` or adjust the `rest_command` URL, and expose `script.alarmv1_morning_briefing` before daily use.
+When running this service from the Hermes Agent Home Assistant add-on, Home Assistant should call it through the add-on DNS name, for example `http://0a6523c6-hermes-agent.local.hass.io:8765/route`. Copy the package into Home Assistant, adjust the `rest_command` URL if your add-on hostname differs, and expose `script.alarmv1_morning_briefing` before daily use.
 
 ## Hardware
 

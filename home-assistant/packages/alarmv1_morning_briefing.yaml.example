@@ -16,8 +16,10 @@
 #
 # Prerequisite for commute:
 #   Run home-assistant/scripts/yandex_route_service.py somewhere reachable from HA.
-#   Default URL here assumes it listens on http://127.0.0.1:8765/route and has the
-#   Home -> Work Yandex Maps route configured as its default route.
+#   When running from the Hermes Agent Home Assistant add-on, bind it to 0.0.0.0 and
+#   use the add-on DNS name from HA, e.g.:
+#     http://0a6523c6-hermes-agent.local.hass.io:8765/route
+#   Keep the Home -> Work Yandex Maps route configured as the service default route.
 
 input_boolean:
   alarmv1_morning_briefing_enabled:
@@ -37,7 +39,7 @@ input_datetime:
 
 rest_command:
   alarmv1_yandex_route_home_to_work:
-    url: "http://127.0.0.1:8765/route"
+    url: "http://0a6523c6-hermes-agent.local.hass.io:8765/route"
     method: get
     timeout: 75
 

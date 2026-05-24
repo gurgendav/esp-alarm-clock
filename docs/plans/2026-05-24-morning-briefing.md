@@ -34,7 +34,7 @@
 
 **Steps:**
 1. Add `input_datetime.alarmv1_morning_briefing_last_run` for dedupe.
-2. Add `rest_command.alarmv1_yandex_route_home_to_work` targeting `http://127.0.0.1:8765/route`.
+2. Add `rest_command.alarmv1_yandex_route_home_to_work` targeting the reachable route-service URL. For the Hermes Agent Home Assistant add-on, bind the service to `0.0.0.0` and call `http://0a6523c6-hermes-agent.local.hass.io:8765/route` from Home Assistant.
 3. In `script.alarmv1_morning_briefing`, call `weather.get_forecasts` twice (`daily` and `hourly`).
 4. Compute current temperature/condition from `weather.kievyan_pogoda` attributes/state.
 5. Compute today high/low from daily forecast fields.
