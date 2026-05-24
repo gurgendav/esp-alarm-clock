@@ -84,7 +84,7 @@ The current ESPHome config expects:
 
 ```yaml
 substitutions:
-  alarm_audio_player_entity: media_player.living_room_speaker_2
+  alarm_audio_player_entity: media_player.example_speaker
 ```
 
 When the alarm starts:
@@ -105,13 +105,13 @@ alias: AlarmV1 Start Alarm Audio
 sequence:
   - action: media_player.volume_set
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       volume_level: 0.8
 
   - action: music_assistant.play_media
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       media_id: Techno
       media_type: playlist
@@ -121,12 +121,26 @@ sequence:
 
   - action: media_player.shuffle_set
     target:
-      entity_id: media_player.living_room_speaker_2
+      entity_id: media_player.example_speaker
     data:
       shuffle: true
 ```
 
 You must also enable ESPHome devices to perform Home Assistant actions in the ESPHome integration settings.
+
+## Optional Morning Briefing
+
+When the alarm is dismissed/stopped, the device can call a Home Assistant script. The contents of that script are intentionally left up to the user.
+
+The ESPHome config expects:
+
+```yaml
+substitutions:
+  morning_briefing_action: script.alarmv1_morning_briefing
+  morning_briefing_player_entity: media_player.example_speaker
+```
+
+Create `script.alarmv1_morning_briefing` in Home Assistant if you want a wake-up briefing. It receives `media_player_entity_id` as script data, so your script can choose whether to speak weather, commute, calendar, news, or nothing at all.
 
 ## Hardware
 
@@ -161,7 +175,7 @@ Before flashing, you will probably want to adjust:
 
 This repo is currently tailored to:
 
-- `Asia/Yerevan`
+- `Etc/UTC`
 - Home Assistant
 - Music Assistant
 - a Chromecast-style media player
