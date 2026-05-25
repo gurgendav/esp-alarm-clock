@@ -57,31 +57,6 @@ api:
 
 web_server:
 
-http_request:
-  verify_ssl: false
-  timeout: 5s
-
-image:
-  - id: media_placeholder_asset
-    file: assets/media_placeholder.png
-    type: RGB565
-
-online_image:
-  - id: media_album_art
-    url: http://example.invalid/alarmv1-placeholder.jpg
-    format: JPEG
-    type: RGB565
-    resize: 72x72
-    update_interval: never
-    on_download_finished:
-      then:
-        - lvgl.widget.hide: media_art_placeholder
-        - lvgl.widget.show: media_album_art_image
-    on_error:
-      then:
-        - lvgl.widget.hide: media_album_art_image
-        - lvgl.widget.show: media_art_placeholder
-
 ota:
   - platform: esphome
 
@@ -484,15 +459,6 @@ text_sensor:
     on_value:
       then:
         - script.execute: update_media_screen_ui
-  - platform: homeassistant
-    id: media_track_art_url
-    entity_id: ${morning_briefing_player_entity}
-    attribute: entity_picture
-    internal: true
-    on_value:
-      then:
-        - script.execute: update_media_art
-
   - platform: template
     id: next_alarm_time_text
     name: "Next Alarm Time"
@@ -964,12 +930,6 @@ lvgl:
                         text_align: center
                         text_color: 0xB0BEC5
                         text: "♪"
-              - image:
-                  id: media_album_art_image
-                  hidden: true
-                  src: media_album_art
-                  align: CENTER
-                  y: -48
               - label:
                   id: media_title_label
                   width: 190
@@ -1572,22 +1532,6 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("media", "Media volume set failed: %s", error.c_str());
-
-  - id: update_media_art
-    then:
-      - if:
-          condition:
-            lambda: |-
-              return id(media_track_art_url).has_state() && !id(media_track_art_url).state.empty();
-          then:
-            - online_image.set_url:
-                id: media_album_art
-                url: !lambda |-
-                  return id(media_track_art_url).state;
-                update: true
-          else:
-            - lvgl.widget.hide: media_album_art_image
-            - lvgl.widget.show: media_art_placeholder
 
   - id: update_media_screen_ui
     then:
