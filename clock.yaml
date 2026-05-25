@@ -929,8 +929,8 @@ lvgl:
             align: CENTER
             bg_color: Black
             bg_opa: COVER
-            radius: 120
-            clip_corner: true
+            radius: 0
+            clip_corner: false
             pad_all: 0
             border_width: 0
             widgets:
@@ -1526,7 +1526,6 @@ script:
       - script.stop: auto_close_home_menu
       - script.execute: update_media_screen_ui
       - script.execute: update_alarm_status_ui
-      - script.execute: update_media_art
       - script.execute: reset_idle_timer
 
   - id: close_media_screen
