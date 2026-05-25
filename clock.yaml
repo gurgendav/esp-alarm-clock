@@ -966,7 +966,7 @@ lvgl:
                   y: -62
                   bg_color: 0x263238
                   bg_opa: COVER
-                  radius: 8
+                  radius: 0
                   border_width: 1
                   border_color: 0x455A64
                   widgets:
@@ -1009,7 +1009,7 @@ lvgl:
                   x: -58
                   y: 66
                   align: CENTER
-                  radius: 28
+                  radius: 0
                   bg_color: 0x43A047
                   text_color: White
                   border_width: 0
@@ -1029,7 +1029,7 @@ lvgl:
                   x: 0
                   y: 66
                   align: CENTER
-                  radius: 28
+                  radius: 0
                   bg_color: 0x1E88E5
                   text_color: White
                   border_width: 0
@@ -1049,7 +1049,7 @@ lvgl:
                   x: 58
                   y: 66
                   align: CENTER
-                  radius: 28
+                  radius: 0
                   bg_color: 0xE53935
                   text_color: White
                   border_width: 0
