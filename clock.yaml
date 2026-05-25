@@ -166,6 +166,10 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: morning_music_prompt_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: next_ring_override_active
     type: bool
     restore_value: yes
@@ -758,6 +762,29 @@ lvgl:
                   align: CENTER
                   text_align: center
                   text: "Stop"
+        - button:
+            id: morning_music_button
+            hidden: true
+            width: 104
+            height: 38
+            align: CENTER
+            y: 74
+            radius: 19
+            bg_color: 0x43A047
+            text_color: White
+            border_width: 0
+            on_click:
+              then:
+                - script.execute: play_morning_music_on_ha
+                - lambda: |-
+                    id(morning_music_prompt_until_ms) = 0;
+                - script.execute: update_alarm_status_ui
+                - script.execute: reset_idle_timer
+            widgets:
+              - label:
+                  align: CENTER
+                  text_align: center
+                  text: "Music"
         - label:
             id: snooze_hint_label
             hidden: true
@@ -880,7 +907,7 @@ interval:
             - if:
                 condition:
                   lambda: |-
-                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0;
+                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0 || id(morning_music_prompt_until_ms) != 0;
                 then:
                   - lambda: |-
                       if (id(alarm_flash_on)) {
@@ -888,6 +915,9 @@ interval:
                       }
                       if (id(dismiss_feedback_until_ms) != 0 && millis() >= id(dismiss_feedback_until_ms)) {
                         id(dismiss_feedback_until_ms) = 0;
+                      }
+                      if (id(morning_music_prompt_until_ms) != 0 && millis() >= id(morning_music_prompt_until_ms)) {
+                        id(morning_music_prompt_until_ms) = 0;
                       }
                   - script.execute: update_alarm_status_ui
 
@@ -1001,6 +1031,7 @@ script:
     then:
       - lambda: |-
           id(dismiss_feedback_until_ms) = millis() + 3000;
+          id(morning_music_prompt_until_ms) = millis() + 60000;
       - script.execute: clear_snooze
       - script.execute: stop_alarm
       - script.execute: play_morning_briefing_on_ha
@@ -1165,6 +1196,22 @@ script:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant morning briefing failed: %s", error.c_str());
 
+  - id: play_morning_music_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant morning music on %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: ${morning_briefing_action}
+          data:
+            media_player_entity_id: ${morning_briefing_player_entity}
+            music_only: "true"
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant morning music");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning music failed: %s", error.c_str());
+
   - id: reset_idle_timer
     mode: restart
     then:
@@ -1323,7 +1370,7 @@ script:
                   - lambda: |-
                       id(ring_controls_visible) = true;
                       id(home_menu_visible) = false;
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, close_menu_button]
+                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, close_menu_button, morning_music_button]
                   - lvgl.widget.show: [snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
@@ -1332,12 +1379,12 @@ script:
                 then:
                   - lambda: |-
                       id(ring_controls_visible) = false;
-                  - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label]
+                  - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label, morning_music_button]
             - if:
                 condition:
                   lambda: "return id(home_menu_visible);"
                 then:
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label]
+                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, morning_music_button]
                   - lvgl.widget.show: [home_menu_panel, all_lights_off_button, close_menu_button]
                 else:
                   - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, close_menu_button]
@@ -1358,6 +1405,14 @@ script:
                         - lvgl.widget.show: [sleep_hint_label]
                       else:
                         - lvgl.widget.hide: [sleep_hint_label]
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
+                      then:
+                        - lvgl.widget.show: [morning_music_button]
+                      else:
+                        - lvgl.widget.hide: [morning_music_button]
 
   - id: apply_snooze_duration
     parameters:
