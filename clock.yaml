@@ -827,8 +827,8 @@ lvgl:
             border_width: 0
             on_click:
               then:
-                - script.execute: play_morning_music_on_ha
                 - script.execute: open_media_screen
+                - script.execute: play_morning_music_on_ha
                 - script.execute: reset_idle_timer
             widgets:
               - label:
@@ -910,10 +910,10 @@ lvgl:
             border_width: 0
             on_click:
               then:
+                - script.execute: open_media_screen
                 - script.execute: play_morning_music_on_ha
                 - lambda: |-
                     id(morning_music_prompt_until_ms) = 0;
-                - script.execute: open_media_screen
                 - script.execute: update_alarm_status_ui
                 - script.execute: reset_idle_timer
             widgets:
@@ -1524,9 +1524,9 @@ script:
           id(home_menu_visible) = false;
           ESP_LOGI("media", "Media screen opened");
       - script.stop: auto_close_home_menu
-      - script.execute: update_media_art
       - script.execute: update_media_screen_ui
       - script.execute: update_alarm_status_ui
+      - script.execute: update_media_art
       - script.execute: reset_idle_timer
 
   - id: close_media_screen
