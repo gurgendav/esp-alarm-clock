@@ -57,6 +57,26 @@ api:
 
 web_server:
 
+http_request:
+  verify_ssl: false
+  timeout: 5s
+
+online_image:
+  - id: media_album_art
+    url: http://example.invalid/alarmv1-placeholder.jpg
+    format: JPEG
+    type: RGB565
+    resize: 56x56
+    update_interval: never
+    on_download_finished:
+      then:
+        - lvgl.widget.hide: media_art_placeholder
+        - lvgl.widget.show: media_album_art_image
+    on_error:
+      then:
+        - lvgl.widget.hide: media_album_art_image
+        - lvgl.widget.show: media_art_placeholder
+
 ota:
   - platform: esphome
 
@@ -170,6 +190,10 @@ globals:
     type: float
     restore_value: no
     initial_value: "0.5"
+  - id: media_volume_overlay_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: dismiss_feedback_until_ms
     type: uint32_t
     restore_value: no
@@ -268,7 +292,7 @@ sensor:
               id(media_volume_level) = 1.0f;
             }
             ESP_LOGI("media", "Volume adjusted clockwise to %.0f%%", id(media_volume_level) * 100.0f);
-            id(update_media_screen_ui).execute();
+            id(show_media_volume_overlay).execute();
             id(set_morning_music_volume_on_ha).execute();
             return;
           }
@@ -331,7 +355,7 @@ sensor:
               id(media_volume_level) = 0.0f;
             }
             ESP_LOGI("media", "Volume adjusted anticlockwise to %.0f%%", id(media_volume_level) * 100.0f);
-            id(update_media_screen_ui).execute();
+            id(show_media_volume_overlay).execute();
             id(set_morning_music_volume_on_ha).execute();
             return;
           }
@@ -459,6 +483,14 @@ text_sensor:
     on_value:
       then:
         - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_art_url
+    entity_id: ${morning_briefing_player_entity}
+    attribute: entity_picture
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_art
   - platform: template
     id: next_alarm_time_text
     name: "Next Alarm Time"
@@ -535,10 +567,8 @@ binary_sensor:
               else:
                 - if:
                     condition:
-                      lambda: "return id(media_screen_visible);"
+                      lambda: "return !id(media_screen_visible);"
                     then:
-                      - script.execute: close_media_screen
-                    else:
                       - if:
                           condition:
                             lambda: "return id(home_menu_visible);"
@@ -592,6 +622,20 @@ display:
     auto_clear_enabled: false
     update_interval: never
     data_rate: 40MHz
+
+font:
+  - file: assets/DejaVuSans.ttf
+    id: media_text_font_14
+    size: 14
+    glyphs: &media_glyphs " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz[]_{}|~°▶■♪АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+  - file: assets/DejaVuSans.ttf
+    id: media_text_font_16
+    size: 16
+    glyphs: *media_glyphs
+  - file: assets/DejaVuSans.ttf
+    id: media_icon_font_28
+    size: 28
+    glyphs: "▶Ⅱ■"
 
 lvgl:
   rotation: 0
@@ -902,6 +946,7 @@ lvgl:
             widgets:
               - arc:
                   id: media_volume_arc
+                  hidden: true
                   width: 226
                   height: 226
                   align: CENTER
@@ -915,13 +960,13 @@ lvgl:
                   arc_color: 0x43A047
               - obj:
                   id: media_art_placeholder
-                  width: 72
-                  height: 72
+                  width: 56
+                  height: 56
                   align: CENTER
-                  y: -48
+                  y: -62
                   bg_color: 0x263238
                   bg_opa: COVER
-                  radius: 14
+                  radius: 8
                   border_width: 1
                   border_color: 0x455A64
                   widgets:
@@ -929,62 +974,42 @@ lvgl:
                         align: CENTER
                         text_align: center
                         text_color: 0xB0BEC5
+                        text_font: media_text_font_16
                         text: "♪"
+              - image:
+                  id: media_album_art_image
+                  hidden: true
+                  src: media_album_art
+                  align: CENTER
+                  y: -62
               - label:
                   id: media_title_label
-                  width: 190
+                  width: 188
                   align: CENTER
-                  y: 10
+                  y: -14
                   text_align: center
                   text_color: White
-                  text_font: montserrat_16
+                  text_font: media_text_font_16
                   long_mode: dot
                   text: "No track"
               - label:
                   id: media_artist_label
-                  width: 180
+                  width: 178
                   align: CENTER
-                  y: 34
+                  y: 12
                   text_align: center
                   text_color: 0xB0BEC5
-                  text_font: montserrat_14
+                  text_font: media_text_font_14
                   long_mode: dot
                   text: ""
-              - label:
-                  id: media_volume_label
-                  align: CENTER
-                  y: 58
-                  text_align: center
-                  text_color: 0x43A047
-                  text_font: montserrat_14
-                  text: "Vol 50%"
-              - button:
-                  id: media_back_button
-                  width: 44
-                  height: 34
-                  x: -78
-                  y: 88
-                  align: CENTER
-                  radius: 17
-                  bg_color: 0x37474F
-                  text_color: White
-                  border_width: 0
-                  on_click:
-                    then:
-                      - script.execute: close_media_screen
-                      - script.execute: reset_idle_timer
-                  widgets:
-                    - label:
-                        align: CENTER
-                        text: "Back"
               - button:
                   id: media_play_pause_button
-                  width: 50
-                  height: 42
-                  x: -24
-                  y: 86
+                  width: 56
+                  height: 56
+                  x: -58
+                  y: 66
                   align: CENTER
-                  radius: 21
+                  radius: 28
                   bg_color: 0x43A047
                   text_color: White
                   border_width: 0
@@ -995,15 +1020,16 @@ lvgl:
                   widgets:
                     - label:
                         align: CENTER
-                        text: "▶/Ⅱ"
+                        text_font: media_icon_font_28
+                        text: "▶Ⅱ"
               - button:
                   id: media_next_button
-                  width: 44
-                  height: 34
-                  x: 30
-                  y: 88
+                  width: 56
+                  height: 56
+                  x: 0
+                  y: 66
                   align: CENTER
-                  radius: 17
+                  radius: 28
                   bg_color: 0x1E88E5
                   text_color: White
                   border_width: 0
@@ -1014,15 +1040,16 @@ lvgl:
                   widgets:
                     - label:
                         align: CENTER
-                        text: "Next"
+                        text_font: media_icon_font_28
+                        text: "▶▶"
               - button:
                   id: media_stop_button
-                  width: 44
-                  height: 34
-                  x: 82
-                  y: 88
+                  width: 56
+                  height: 56
+                  x: 58
+                  y: 66
                   align: CENTER
-                  radius: 17
+                  radius: 28
                   bg_color: 0xE53935
                   text_color: White
                   border_width: 0
@@ -1034,7 +1061,8 @@ lvgl:
                   widgets:
                     - label:
                         align: CENTER
-                        text: "Stop"
+                        text_font: media_icon_font_28
+                        text: "■"
         - label:
             id: snooze_hint_label
             hidden: true
@@ -1060,6 +1088,17 @@ interval:
             struct timeval tv;
             gettimeofday(&tv, NULL);
             return (now.second * 12) + (tv.tv_usec / 83330.0);
+
+  - interval: 250ms
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(media_screen_visible) && id(media_volume_overlay_until_ms) != 0 && millis() > id(media_volume_overlay_until_ms);
+          then:
+            - lambda: |-
+                id(media_volume_overlay_until_ms) = 0;
+            - lvgl.widget.hide: media_volume_arc
 
   - interval: 1s
     then:
@@ -1484,6 +1523,7 @@ script:
           id(home_menu_visible) = false;
           ESP_LOGI("media", "Media screen opened");
       - script.stop: auto_close_home_menu
+      - script.execute: update_media_art
       - script.execute: update_media_screen_ui
       - script.execute: update_alarm_status_ui
       - script.execute: reset_idle_timer
@@ -1533,18 +1573,35 @@ script:
             - lambda: |-
                 ESP_LOGW("media", "Media volume set failed: %s", error.c_str());
 
+  - id: update_media_art
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(media_track_art_url).has_state() && !id(media_track_art_url).state.empty();
+          then:
+            - online_image.set_url:
+                id: media_album_art
+                url: !lambda |-
+                  return id(media_track_art_url).state;
+                update: true
+          else:
+            - lvgl.widget.hide: media_album_art_image
+            - lvgl.widget.show: media_art_placeholder
+
+  - id: show_media_volume_overlay
+    then:
+      - lambda: |-
+          id(media_volume_overlay_until_ms) = millis() + 1500;
+      - lvgl.widget.show: media_volume_arc
+      - script.execute: update_media_screen_ui
+
   - id: update_media_screen_ui
     then:
       - lvgl.arc.update:
           id: media_volume_arc
           value: !lambda |-
             return int(id(media_volume_level) * 100.0f + 0.5f);
-      - lvgl.label.update:
-          id: media_volume_label
-          text: !lambda |-
-            static char volume_buf[16];
-            snprintf(volume_buf, sizeof(volume_buf), "Vol %.0f%%", id(media_volume_level) * 100.0f);
-            return volume_buf;
       - lvgl.label.update:
           id: media_title_label
           text: !lambda |-
