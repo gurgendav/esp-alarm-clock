@@ -57,24 +57,6 @@ api:
 
 web_server:
 
-http_request:
-  verify_ssl: false
-  timeout: 5s
-
-online_image:
-  - id: media_album_art
-    url: http://example.invalid/alarmv1-placeholder.jpg
-    format: JPEG
-    type: RGB565
-    resize: 56x56
-    update_interval: never
-    on_download_finished:
-      then:
-        - lvgl.widget.show: media_album_art_image
-    on_error:
-      then:
-        - lvgl.widget.hide: media_album_art_image
-
 ota:
   - platform: esphome
 
@@ -481,14 +463,6 @@ text_sensor:
     on_value:
       then:
         - script.execute: update_media_screen_ui
-  - platform: homeassistant
-    id: media_track_art_url
-    entity_id: ${morning_briefing_player_entity}
-    attribute: entity_picture_local
-    internal: true
-    on_value:
-      then:
-        - script.execute: update_media_art
   - platform: template
     id: next_alarm_time_text
     name: "Next Alarm Time"
@@ -956,11 +930,6 @@ lvgl:
                   adjustable: false
                   arc_width: 8
                   arc_color: 0x43A047
-              - image:
-                  id: media_album_art_image
-                  src: media_album_art
-                  align: CENTER
-                  y: -62
               - label:
                   id: media_title_label
                   width: 188
@@ -1520,7 +1489,6 @@ script:
           id(home_menu_visible) = false;
           ESP_LOGI("media", "Media screen opened");
       - script.stop: auto_close_home_menu
-      - script.execute: update_media_art
       - script.execute: update_media_screen_ui
       - script.execute: update_alarm_status_ui
       - script.execute: reset_idle_timer
@@ -1569,31 +1537,6 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("media", "Media volume set failed: %s", error.c_str());
-
-  - id: update_media_art
-    then:
-      - if:
-          condition:
-            lambda: |-
-              return id(media_track_art_url).has_state() && !id(media_track_art_url).state.empty();
-          then:
-            - online_image.set_url:
-                id: media_album_art
-                url: !lambda |-
-                  static std::string art_url;
-                  const std::string raw = id(media_track_art_url).state;
-                  if (raw.rfind("http://", 0) == 0 || raw.rfind("https://", 0) == 0) {
-                    art_url = raw;
-                  } else if (!raw.empty() && raw[0] == '/') {
-                    art_url = std::string("http://homeassistant.local:8123") + raw;
-                  } else {
-                    art_url = raw;
-                  }
-                  ESP_LOGI("media", "Updating album art URL for 56x56 render: %s", art_url.c_str());
-                  return art_url;
-                update: true
-          else:
-            - lvgl.widget.hide: media_album_art_image
 
   - id: show_media_volume_overlay
     then:
