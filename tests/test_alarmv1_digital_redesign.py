@@ -46,3 +46,12 @@ def test_v2_omits_bottom_nav_and_album_art_runtime_paths():
     ]
     for token in forbidden:
         assert token not in text
+
+
+def test_v2_media_screen_uses_large_touch_targets_without_album_art():
+    text = read_clock()
+    assert "id: media_text_font_18" in text
+    assert "id: media_play_pause_button\n                  width: 68\n                  height: 68" in text
+    assert "id: media_stop_button\n                  width: 54\n                  height: 54" in text
+    assert "id: media_next_button\n                  width: 54\n                  height: 54" in text
+    assert "arc_width: 8" in text

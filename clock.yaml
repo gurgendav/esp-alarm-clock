@@ -627,6 +627,10 @@ font:
     size: 16
     glyphs: *media_glyphs
   - file: assets/DejaVuSans.ttf
+    id: media_text_font_18
+    size: 18
+    glyphs: *media_glyphs
+  - file: assets/DejaVuSans.ttf
     id: media_icon_font_28
     size: 28
     glyphs: "▶Ⅱ■»"
@@ -1017,33 +1021,33 @@ lvgl:
               - arc:
                   id: media_volume_arc
                   hidden: true
-                  width: 226
-                  height: 226
+                  width: 232
+                  height: 232
                   align: CENTER
-                  x: -6
+                  x: -7
                   value: 50
                   min_value: 0
                   max_value: 100
                   start_angle: 128
                   end_angle: 232
                   adjustable: false
-                  arc_width: 6
+                  arc_width: 8
                   arc_color: 0xFFB59C
               - label:
                   id: media_title_label
                   width: 202
                   align: CENTER
-                  y: -54
+                  y: -70
                   text_align: center
                   text_color: 0xF4F4F4
-                  text_font: media_text_font_16
+                  text_font: media_text_font_18
                   long_mode: dot
                   text: "No track"
               - label:
                   id: media_artist_label
-                  width: 190
+                  width: 204
                   align: CENTER
-                  y: -28
+                  y: -40
                   text_align: center
                   text_color: 0x8E9696
                   text_font: media_text_font_14
@@ -1051,12 +1055,12 @@ lvgl:
                   text: ""
               - button:
                   id: media_stop_button
-                  width: 48
-                  height: 48
-                  x: -58
-                  y: 56
+                  width: 54
+                  height: 54
+                  x: -68
+                  y: 54
                   align: CENTER
-                  radius: 24
+                  radius: 27
                   bg_opa: TRANSP
                   text_color: 0xFFB4AB
                   border_width: 1
@@ -1078,12 +1082,12 @@ lvgl:
                         text: "■"
               - button:
                   id: media_play_pause_button
-                  width: 58
-                  height: 58
+                  width: 68
+                  height: 68
                   x: 0
-                  y: 56
+                  y: 54
                   align: CENTER
-                  radius: 29
+                  radius: 34
                   bg_color: 0xFFB59C
                   bg_opa: COVER
                   text_color: Black
@@ -1105,12 +1109,12 @@ lvgl:
                         text: "▶"
               - button:
                   id: media_next_button
-                  width: 48
-                  height: 48
-                  x: 58
-                  y: 56
+                  width: 54
+                  height: 54
+                  x: 68
+                  y: 54
                   align: CENTER
-                  radius: 24
+                  radius: 27
                   bg_opa: TRANSP
                   text_color: 0x4DD9E4
                   border_width: 1
