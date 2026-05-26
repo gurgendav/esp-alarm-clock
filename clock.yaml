@@ -809,11 +809,19 @@ lvgl:
             border_width: 0
             on_click:
               then:
-                - script.execute: open_media_screen
-                - script.execute: play_morning_music_on_ha
+                - if:
+                    condition:
+                      lambda: |-
+                        return id(media_player_state).has_state() && id(media_player_state).state == "playing";
+                    then:
+                      - script.execute: open_media_screen
+                    else:
+                      - script.execute: open_media_screen
+                      - script.execute: play_morning_music_on_ha
                 - script.execute: reset_idle_timer
             widgets:
               - label:
+                  id: menu_music_play_label
                   align: CENTER
                   text_align: center
                   text: "Start music"
@@ -932,9 +940,9 @@ lvgl:
                   arc_color: 0x43A047
               - label:
                   id: media_title_label
-                  width: 188
+                  width: 204
                   align: CENTER
-                  y: -14
+                  y: -54
                   text_align: center
                   text_color: White
                   text_font: media_text_font_16
@@ -942,9 +950,9 @@ lvgl:
                   text: "No track"
               - label:
                   id: media_artist_label
-                  width: 178
+                  width: 196
                   align: CENTER
-                  y: 12
+                  y: -24
                   text_align: center
                   text_color: 0xB0BEC5
                   text_font: media_text_font_14
@@ -952,12 +960,12 @@ lvgl:
                   text: ""
               - button:
                   id: media_play_pause_button
-                  width: 56
-                  height: 56
-                  x: -58
-                  y: 66
+                  width: 52
+                  height: 52
+                  x: -56
+                  y: 46
                   align: CENTER
-                  radius: 28
+                  radius: 26
                   bg_color: 0x43A047
                   text_color: White
                   border_width: 0
@@ -976,12 +984,12 @@ lvgl:
                         text: "▶"
               - button:
                   id: media_next_button
-                  width: 56
-                  height: 56
+                  width: 52
+                  height: 52
                   x: 0
-                  y: 66
+                  y: 46
                   align: CENTER
-                  radius: 28
+                  radius: 26
                   bg_color: 0x1E88E5
                   text_color: White
                   border_width: 0
@@ -999,12 +1007,12 @@ lvgl:
                         text: "»"
               - button:
                   id: media_stop_button
-                  width: 56
-                  height: 56
-                  x: 58
-                  y: 66
+                  width: 52
+                  height: 52
+                  x: 56
+                  y: 46
                   align: CENTER
-                  radius: 28
+                  radius: 26
                   bg_color: 0xE53935
                   text_color: White
                   border_width: 0
@@ -1551,6 +1559,13 @@ script:
           id: media_volume_arc
           value: !lambda |-
             return int(id(media_volume_level) * 100.0f + 0.5f);
+      - lvgl.label.update:
+          id: menu_music_play_label
+          text: !lambda |-
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "Open music";
+            }
+            return "Start music";
       - lvgl.label.update:
           id: media_play_pause_icon_label
           text: !lambda |-
