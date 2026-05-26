@@ -601,8 +601,8 @@ font:
   # Lumina/Digital redesign fonts: Hanken Grotesk for clock/menu/alarm UI,
   # DejaVu Sans retained for media metadata because it already covers Cyrillic.
   - file: assets/HankenGrotesk-Bold.ttf
-    id: clock_time_font_80
-    size: 80
+    id: clock_time_font_82
+    size: 82
     glyphs: "0123456789:"
   - file: assets/HankenGrotesk-SemiBold.ttf
     id: clock_label_font_12
@@ -673,10 +673,10 @@ lvgl:
             id: clock_time_label
             width: 220
             align: CENTER
-            y: -56
+            y: -48
             text_align: center
             text_color: 0xFFB59C
-            text_font: clock_time_font_80
+            text_font: clock_time_font_82
             text: "--:--"
         - obj:
             id: clock_divider
