@@ -596,6 +596,28 @@ display:
     data_rate: 40MHz
 
 font:
+  # Lumina/Digital redesign fonts: Hanken Grotesk for clock/menu/alarm UI,
+  # DejaVu Sans retained for media metadata because it already covers Cyrillic.
+  - file: assets/HankenGrotesk-Bold.ttf
+    id: clock_time_font_56
+    size: 56
+    glyphs: "0123456789:"
+  - file: assets/HankenGrotesk-SemiBold.ttf
+    id: clock_label_font_12
+    size: 12
+    glyphs: &clock_text_glyphs ' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:-,./'
+  - file: assets/HankenGrotesk-SemiBold.ttf
+    id: clock_body_font_16
+    size: 16
+    glyphs: *clock_text_glyphs
+  - file: assets/HankenGrotesk-SemiBold.ttf
+    id: clock_body_font_18
+    size: 18
+    glyphs: *clock_text_glyphs
+  - file: assets/HankenGrotesk-Bold.ttf
+    id: clock_body_font_20
+    size: 20
+    glyphs: *clock_text_glyphs
   - file: assets/DejaVuSans.ttf
     id: media_text_font_14
     size: 14
@@ -618,7 +640,7 @@ lvgl:
       long_press_time: 700ms
   style_definitions:
     - id: date_style
-      text_font: montserrat_14
+      text_font: clock_body_font_16
       align: center
       text_color: White
       bg_opa: TRANSP
@@ -630,99 +652,117 @@ lvgl:
       width: 100%
       bg_color: Black
       widgets:
-        - meter:
-            height: 100%
-            width: 100%
-            align: CENTER
-            bg_opa: TRANSP
-            border_width: 0
-            pad_all: 0
-            text_color: White
-            scales:
-              - range_from: 0
-                range_to: 60
-                angle_range: 360
-                rotation: 270
-                ticks:
-                  width: 1
-                  count: 61
-                  length: 10
-                  color: White
-                indicators:
-                  - line:
-                      id: minute_hand
-                      width: 2
-                      color: White
-                      length: 95
-                      value: 0
-              - range_from: 1
-                range_to: 12
-                angle_range: 330
-                rotation: 300
-                ticks:
-                  width: 1
-                  count: 12
-                  length: 1
-                  major:
-                    stride: 1
-                    width: 4
-                    length: 10
-                    color: White
-                    label_gap: 12
-              - range_from: 0
-                range_to: 720
-                angle_range: 360
-                rotation: 270
-                ticks:
-                  count: 2
-                  width: 1
-                  length: 1
-                  color: 0x000000
-                indicators:
-                  - line:
-                      id: hour_hand
-                      width: 4
-                      color: White
-                      length: 80
-                      value: 0
-                  - line:
-                      id: secs_hand
-                      width: 1
-                      color: Red
-                      length: 105
-                      value: 0
         - obj:
-            id: alarm_status_circle
-            width: 120
-            height: 120
+            id: clock_state_surface
+            width: 100%
+            height: 100%
             align: CENTER
             bg_color: Black
             bg_opa: COVER
-            radius: 60
-            clip_corner: true
+            radius: 0
+            clip_corner: false
             pad_all: 0
-            border_width: 1
+            border_width: 0
+        - label:
+            id: clock_time_label
+            width: 220
+            align: CENTER
+            y: -64
+            text_align: center
+            text_color: 0xFFB59C
+            text_font: clock_time_font_56
+            text: "--:--"
+        - obj:
+            id: clock_divider
+            width: 142
+            height: 2
+            align: CENTER
+            y: -18
+            bg_color: 0x3A3D3D
+            bg_opa: COVER
+            radius: 1
+            border_width: 0
+            pad_all: 0
+        - obj:
+            id: clock_status_pill
+            hidden: true
+            width: 96
+            height: 24
+            align: CENTER
+            y: 10
+            bg_color: 0x00B5C0
+            bg_opa: COVER
+            radius: 12
+            border_width: 0
+            pad_all: 0
             widgets:
               - label:
-                  styles: date_style
-                  id: alarm_label
-                  width: 104
-                  y: -20
+                  id: clock_status_pill_label
+                  align: CENTER
                   text_align: center
+                  text_color: Black
+                  text_font: clock_label_font_12
                   text: ""
+        - label:
+            id: clock_next_label
+            width: 220
+            align: CENTER
+            y: 40
+            text_align: center
+            text_color: 0xF4F4F4
+            text_font: clock_body_font_18
+            long_mode: dot
+            text: "Next Ring: --:--"
+        - label:
+            id: clock_countdown_label
+            width: 180
+            align: CENTER
+            y: 66
+            text_align: center
+            text_color: 0x8E9696
+            text_font: clock_body_font_16
+            text: ""
+        - button:
+            id: clock_resume_button
+            hidden: true
+            width: 150
+            height: 34
+            align: CENTER
+            y: 88
+            radius: 17
+            bg_opa: TRANSP
+            border_width: 1
+            border_color: 0x4DD9E4
+            text_color: 0x4DD9E4
+            shadow_width: 0
+            on_click:
+              then:
+                - if:
+                    condition:
+                      lambda: "return !id(alarm_enabled);"
+                    then:
+                      - script.execute: enable_alarm
+                    else:
+                      - if:
+                          condition:
+                            lambda: "return id(skip_next_ring);"
+                          then:
+                            - script.execute: toggle_skip_next_ring
+                - script.execute: reset_idle_timer
+            widgets:
               - label:
-                  id: date_label
-                  styles: date_style
-                  width: 104
-                  y: 20
+                  id: clock_resume_label
+                  align: CENTER
                   text_align: center
-                  text: ""
+                  text_color: 0x4DD9E4
+                  text_font: clock_label_font_12
+                  text: "TAP TO RESUME"
         - button:
             id: center_tap_button
-            width: 120
-            height: 120
+            width: 180
+            height: 180
             align: CENTER
-            radius: 60
+            radius: 90
             bg_opa: TRANSP
             border_width: 0
             shadow_width: 0
@@ -749,44 +789,56 @@ lvgl:
                     then:
                       - script.execute: open_home_menu
                 - script.execute: reset_idle_timer
-        - label:
-            id: sleep_hint_label
-            hidden: true
-            align: CENTER
-            y: 68
-            text_font: montserrat_18
-            text_align: center
-            text_color: 0xE53935
-            text: ""
         - obj:
             id: home_menu_panel
             hidden: true
-            width: 190
-            height: 138
+            width: 206
+            height: 206
             align: CENTER
-            bg_color: 0x111111
-            bg_opa: 92%
-            radius: 18
+            bg_color: 0x080A0A
+            bg_opa: COVER
+            radius: 103
+            clip_corner: false
             border_width: 1
-            border_color: 0x455A64
+            border_color: 0x243030
             pad_all: 0
             widgets:
               - label:
                   align: TOP_MID
-                  y: 12
-                  text_color: White
+                  y: 22
+                  text_color: 0xFFB59C
+                  text_font: clock_body_font_20
                   text: "Home"
+              - obj:
+                  width: 150
+                  height: 1
+                  align: TOP_MID
+                  y: 55
+                  bg_color: 0x2D3636
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
+              - obj:
+                  width: 150
+                  height: 1
+                  align: TOP_MID
+                  y: 111
+                  bg_color: 0x2D3636
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
         - button:
             id: all_lights_off_button
             hidden: true
-            width: 118
+            width: 154
             height: 42
             align: CENTER
-            y: -16
+            y: -20
             radius: 21
-            bg_color: 0x37474F
-            text_color: White
+            bg_opa: TRANSP
+            text_color: 0xF4F4F4
             border_width: 0
+            shadow_width: 0
             on_click:
               then:
                 - script.execute: home_all_lights_off
@@ -795,18 +847,20 @@ lvgl:
             widgets:
               - label:
                   align: CENTER
+                  text_font: clock_body_font_18
                   text: "All Off"
         - button:
             id: menu_music_play_button
             hidden: true
-            width: 118
+            width: 154
             height: 42
             align: CENTER
-            y: 38
+            y: 36
             radius: 21
-            bg_color: 0x43A047
-            text_color: White
+            bg_opa: TRANSP
+            text_color: 0xF4F4F4
             border_width: 0
+            shadow_width: 0
             on_click:
               then:
                 - if:
@@ -824,38 +878,55 @@ lvgl:
                   id: menu_music_play_label
                   align: CENTER
                   text_align: center
-                  text: "Start music"
+                  text_color: 0xF4F4F4
+                  text_font: clock_body_font_18
+                  text: "Start Music"
         - button:
             id: close_menu_button
             hidden: true
-            width: 34
-            height: 34
-            x: 66
-            y: -38
-            align: CENTER
-            radius: 17
-            bg_color: 0x546E7A
-            text_color: White
-            border_width: 0
+            width: 38
+            height: 38
+            align: BOTTOM_MID
+            y: -16
+            radius: 19
+            bg_color: 0x101616
+            bg_opa: COVER
+            text_color: 0xF4F4F4
+            border_width: 1
+            border_color: 0x2D3636
+            shadow_width: 0
             on_click:
               then:
                 - script.execute: close_home_menu
+                - script.execute: reset_idle_timer
             widgets:
               - label:
                   align: CENTER
+                  text_font: clock_body_font_18
                   text: "X"
+        - label:
+            id: ring_title_label
+            hidden: true
+            width: 160
+            align: TOP_MID
+            y: 28
+            text_align: center
+            text_color: 0xFFB4AB
+            text_font: clock_label_font_12
+            text: "ALARM"
         - button:
             id: snooze_button
             hidden: true
-            width: 88
-            height: 88
-            x: -66
-            y: 0
+            width: 168
+            height: 54
             align: CENTER
-            radius: 44
-            bg_color: 0x1E88E5
-            text_color: White
+            y: -22
+            radius: 27
+            bg_color: 0x4DD9E4
+            bg_opa: COVER
+            text_color: Black
             border_width: 0
+            shadow_width: 0
             on_click:
               then:
                 - script.execute: snooze_alarm
@@ -865,19 +936,32 @@ lvgl:
                   id: snooze_button_label
                   align: CENTER
                   text_align: center
-                  text: "Snooze\n10 min"
+                  text_color: Black
+                  text_font: clock_body_font_20
+                  text: "Snooze 10m"
+        - label:
+            id: snooze_hint_label
+            hidden: true
+            align: CENTER
+            y: 18
+            text_align: center
+            text_color: 0xC5CDCD
+            text_font: clock_label_font_12
+            text: "Rotate = snooze time"
         - button:
             id: stop_button
             hidden: true
-            width: 88
-            height: 88
-            x: 66
-            y: 0
+            width: 150
+            height: 54
             align: CENTER
-            radius: 44
-            bg_color: 0xE53935
-            text_color: White
-            border_width: 0
+            y: 66
+            radius: 27
+            bg_color: 0x93000A
+            bg_opa: COVER
+            text_color: 0xFFB4AB
+            border_width: 1
+            border_color: 0xFFB4AB
+            shadow_width: 0
             on_click:
               then:
                 - script.execute: dismiss_alarm
@@ -886,18 +970,22 @@ lvgl:
               - label:
                   align: CENTER
                   text_align: center
-                  text: "Stop"
+                  text_color: 0xFFB4AB
+                  text_font: clock_body_font_20
+                  text: "STOP"
         - button:
             id: morning_music_button
             hidden: true
-            width: 104
-            height: 38
+            width: 132
+            height: 36
             align: CENTER
-            y: 74
-            radius: 19
-            bg_color: 0x43A047
-            text_color: White
+            y: 88
+            radius: 18
+            bg_color: 0xFFB59C
+            bg_opa: COVER
+            text_color: Black
             border_width: 0
+            shadow_width: 0
             on_click:
               then:
                 - script.execute: open_media_screen
@@ -910,7 +998,9 @@ lvgl:
               - label:
                   align: CENTER
                   text_align: center
-                  text: "Music"
+                  text_color: Black
+                  text_font: clock_body_font_16
+                  text: "Start Music"
         - obj:
             id: media_screen_panel
             hidden: true
@@ -930,92 +1020,48 @@ lvgl:
                   width: 226
                   height: 226
                   align: CENTER
+                  x: -6
                   value: 50
                   min_value: 0
                   max_value: 100
-                  start_angle: 135
-                  end_angle: 45
+                  start_angle: 128
+                  end_angle: 232
                   adjustable: false
-                  arc_width: 8
-                  arc_color: 0x43A047
+                  arc_width: 6
+                  arc_color: 0xFFB59C
               - label:
                   id: media_title_label
-                  width: 204
+                  width: 202
                   align: CENTER
                   y: -54
                   text_align: center
-                  text_color: White
+                  text_color: 0xF4F4F4
                   text_font: media_text_font_16
                   long_mode: dot
                   text: "No track"
               - label:
                   id: media_artist_label
-                  width: 196
+                  width: 190
                   align: CENTER
-                  y: -24
+                  y: -28
                   text_align: center
-                  text_color: 0xB0BEC5
+                  text_color: 0x8E9696
                   text_font: media_text_font_14
                   long_mode: dot
                   text: ""
               - button:
-                  id: media_play_pause_button
-                  width: 52
-                  height: 52
-                  x: -56
-                  y: 46
-                  align: CENTER
-                  radius: 26
-                  bg_color: 0x43A047
-                  text_color: White
-                  border_width: 0
-                  on_click:
-                    then:
-                      - script.execute: media_play_pause_on_ha
-                      - script.execute: reset_idle_timer
-                  widgets:
-                    - label:
-                        id: media_play_pause_icon_label
-                        width: 100%
-                        height: 100%
-                        align: CENTER
-                        text_align: center
-                        text_font: media_icon_font_28
-                        text: "▶"
-              - button:
-                  id: media_next_button
-                  width: 52
-                  height: 52
-                  x: 0
-                  y: 46
-                  align: CENTER
-                  radius: 26
-                  bg_color: 0x1E88E5
-                  text_color: White
-                  border_width: 0
-                  on_click:
-                    then:
-                      - script.execute: media_next_track_on_ha
-                      - script.execute: reset_idle_timer
-                  widgets:
-                    - label:
-                        width: 100%
-                        height: 100%
-                        align: CENTER
-                        text_align: center
-                        text_font: media_icon_font_28
-                        text: "»"
-              - button:
                   id: media_stop_button
-                  width: 52
-                  height: 52
-                  x: 56
-                  y: 46
+                  width: 48
+                  height: 48
+                  x: -58
+                  y: 56
                   align: CENTER
-                  radius: 26
-                  bg_color: 0xE53935
-                  text_color: White
-                  border_width: 0
+                  radius: 24
+                  bg_opa: TRANSP
+                  text_color: 0xFFB4AB
+                  border_width: 1
+                  border_color: 0xFFB4AB
+                  shadow_width: 0
                   on_click:
                     then:
                       - script.execute: close_media_screen
@@ -1027,34 +1073,64 @@ lvgl:
                         height: 100%
                         align: CENTER
                         text_align: center
+                        text_color: 0xFFB4AB
                         text_font: media_icon_font_28
                         text: "■"
-        - label:
-            id: snooze_hint_label
-            hidden: true
-            align: CENTER
-            y: 76
-            text_align: center
-            text_color: 0xB0BEC5
-            text: "Rotate = snooze time"
+              - button:
+                  id: media_play_pause_button
+                  width: 58
+                  height: 58
+                  x: 0
+                  y: 56
+                  align: CENTER
+                  radius: 29
+                  bg_color: 0xFFB59C
+                  bg_opa: COVER
+                  text_color: Black
+                  border_width: 0
+                  shadow_width: 0
+                  on_click:
+                    then:
+                      - script.execute: media_play_pause_on_ha
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        id: media_play_pause_icon_label
+                        width: 100%
+                        height: 100%
+                        align: CENTER
+                        text_align: center
+                        text_color: Black
+                        text_font: media_icon_font_28
+                        text: "▶"
+              - button:
+                  id: media_next_button
+                  width: 48
+                  height: 48
+                  x: 58
+                  y: 56
+                  align: CENTER
+                  radius: 24
+                  bg_opa: TRANSP
+                  text_color: 0x4DD9E4
+                  border_width: 1
+                  border_color: 0x4DD9E4
+                  shadow_width: 0
+                  on_click:
+                    then:
+                      - script.execute: media_next_track_on_ha
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        width: 100%
+                        height: 100%
+                        align: CENTER
+                        text_align: center
+                        text_color: 0x4DD9E4
+                        text_font: media_icon_font_28
+                        text: "»"
 
 interval:
-  - interval: 25ms
-    then:
-      - lvgl.indicator.update:
-          id: secs_hand
-          value: !lambda |-
-            auto now = id(sntp_time).now();
-            if (!now.is_valid()) {
-              now = id(rtctime).now();
-            }
-            if (!now.is_valid()) {
-              return 0.0f;
-            }
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            return (now.second * 12) + (tv.tv_usec / 83330.0);
-
   - interval: 250ms
     then:
       - if:
@@ -1563,9 +1639,9 @@ script:
           id: menu_music_play_label
           text: !lambda |-
             if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
-              return "Open music";
+              return "Open Music";
             }
-            return "Start music";
+            return "Start Music";
       - lvgl.label.update:
           id: media_play_pause_icon_label
           text: !lambda |-
@@ -1616,134 +1692,134 @@ script:
           id: snooze_button_label
           text: !lambda |-
             static char snooze_buf[24];
-            snprintf(snooze_buf, sizeof(snooze_buf), "Snooze\n%d min", id(snooze_minutes));
+            snprintf(snooze_buf, sizeof(snooze_buf), "Snooze %dm", id(snooze_minutes));
             return snooze_buf;
       - lvgl.label.update:
-          id: sleep_hint_label
+          id: clock_status_pill_label
           text: !lambda |-
-            static char sleep_buf[16];
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              return "STOPPED";
+            }
+            if (id(snooze_active)) {
+              return "SNOOZING";
+            }
+            if (id(next_ring_override_active)) {
+              return "ONE-TIME";
+            }
+            if (id(skip_next_ring)) {
+              return "SKIPPED";
+            }
+            return "";
+      - lvgl.widget.update:
+          id: clock_status_pill
+          bg_color: !lambda |-
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              return lv_color_hex(0x2A1511);
+            }
+            if (id(snooze_active) || id(skip_next_ring)) {
+              return lv_color_hex(0x4DD9E4);
+            }
+            if (id(next_ring_override_active)) {
+              return lv_color_hex(0xFFB59C);
+            }
+            return lv_color_hex(0x4DD9E4);
+      - lvgl.label.update:
+          id: clock_status_pill_label
+          text_color: !lambda |-
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              return lv_color_hex(0xFFB4AB);
+            }
+            return lv_color_hex(0x000000);
+      - lvgl.widget.update:
+          id: clock_state_surface
+          bg_color: !lambda |-
+            if (id(alarm_ringing)) {
+              return id(alarm_flash_on) ? lv_color_hex(0x330A06) : lv_color_hex(0x160302);
+            }
+            if (!id(alarm_enabled)) {
+              return lv_color_hex(0x003E44);
+            }
+            return lv_color_hex(0x000000);
+      - lvgl.label.update:
+          id: clock_time_label
+          text_color: !lambda |-
+            return lv_color_hex(0xFFB59C);
+      - lvgl.widget.update:
+          id: clock_divider
+          bg_color: !lambda |-
+            if (!id(alarm_enabled)) {
+              return lv_color_hex(0x8DECF2);
+            }
+            return lv_color_hex(0x3A3D3D);
+      - lvgl.label.update:
+          id: clock_next_label
+          text_color: !lambda |-
+            if (!id(alarm_enabled)) {
+              return lv_color_hex(0xF4FFFF);
+            }
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              return lv_color_hex(0xFFB4AB);
+            }
+            return lv_color_hex(0xF4F4F4);
+      - lvgl.label.update:
+          id: clock_next_label
+          text: !lambda |-
+            static const char *const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+            static char next_buf[48];
             auto now = id(sntp_time).now();
             if (!now.is_valid()) {
               now = id(rtctime).now();
             }
-            if (!now.is_valid() || !id(alarm_enabled) || !id(next_alarm_available) || id(snooze_active)) {
-              snprintf(sleep_buf, sizeof(sleep_buf), "");
-              return sleep_buf;
+            if (!id(alarm_enabled)) {
+              snprintf(next_buf, sizeof(next_buf), "Away Mode Active");
+              return next_buf;
+            }
+            if (id(alarm_ringing)) {
+              snprintf(next_buf, sizeof(next_buf), "");
+              return next_buf;
+            }
+            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
+              snprintf(next_buf, sizeof(next_buf), "Stopped");
+              return next_buf;
+            }
+            if (!now.is_valid()) {
+              snprintf(next_buf, sizeof(next_buf), "Syncing time");
+              return next_buf;
+            }
+            if (!id(next_alarm_available)) {
+              snprintf(next_buf, sizeof(next_buf), "No next ring");
+              return next_buf;
+            }
+            auto next_alarm = ESPTime::from_epoch_local(id(next_alarm_epoch));
+            int day_delta = next_alarm.day_of_year - now.day_of_year;
+            if (day_delta < 0) {
+              day_delta += 366;
+            }
+            const char *day_text = day_delta == 0 ? "Today" : (day_delta == 1 ? "Tomorrow" : day_names[next_alarm.day_of_week - 1]);
+            snprintf(next_buf, sizeof(next_buf), "Next Ring: %s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);
+            return next_buf;
+      - lvgl.label.update:
+          id: clock_countdown_label
+          text: !lambda |-
+            static char countdown_buf[24];
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid() || !id(alarm_enabled) || id(alarm_ringing) || !id(next_alarm_available) ||
+                (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms))) {
+              snprintf(countdown_buf, sizeof(countdown_buf), "");
+              return countdown_buf;
             }
             const int32_t seconds_until_alarm = int32_t(id(next_alarm_epoch)) - int32_t(now.timestamp);
             if (seconds_until_alarm <= 0 || seconds_until_alarm > (8 * 3600)) {
-              snprintf(sleep_buf, sizeof(sleep_buf), "");
-              return sleep_buf;
+              snprintf(countdown_buf, sizeof(countdown_buf), "");
+              return countdown_buf;
             }
             const int hours = seconds_until_alarm / 3600;
             const int minutes = (seconds_until_alarm % 3600) / 60;
-            snprintf(sleep_buf, sizeof(sleep_buf), "%dh %02dm", hours, minutes);
-            return sleep_buf;
-      - lvgl.label.update:
-          id: alarm_label
-          text_color: !lambda |-
-            if (!id(alarm_enabled)) {
-              return lv_color_hex(0xCE93D8);
-            }
-            return lv_color_hex(0xFFFFFF);
-      - lvgl.label.update:
-          id: alarm_label
-          text: !lambda |-
-            static char alarm_buf[24];
-            if (!id(alarm_enabled)) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Away Mode");
-            } else if (id(alarm_ringing)) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Alarm!");
-            } else if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Stopped");
-            } else if (id(snooze_active)) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Snoozing");
-            } else if (id(next_ring_override_active)) {
-              snprintf(alarm_buf, sizeof(alarm_buf), "One-Time");
-            } else {
-              snprintf(alarm_buf, sizeof(alarm_buf), "Next Ring");
-            }
-            return alarm_buf;
-      - lvgl.label.update:
-          id: date_label
-          text_color: !lambda |-
-            if (!id(alarm_enabled)) {
-              return lv_color_hex(0xFFFFFF);
-            }
-            if (id(next_ring_override_active) && id(alarm_enabled) && !id(alarm_ringing) &&
-                !id(snooze_active) && !id(skip_next_ring) &&
-                !(id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms))) {
-              return lv_color_hex(0xFFB300);
-            }
-            return lv_color_hex(0xFFFFFF);
-      - lvgl.label.update:
-          id: date_label
-          text: !lambda |-
-            static const char *const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-            static char date_buf[24];
-            auto now = id(sntp_time).now();
-            if (!now.is_valid()) {
-              now = id(rtctime).now();
-            }
-
-            if (!id(alarm_enabled)) {
-              snprintf(date_buf, sizeof(date_buf), "Tap to\nresume");
-            } else if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
-              snprintf(date_buf, sizeof(date_buf), "Dismissed");
-            } else if (id(snooze_active)) {
-              if (!now.is_valid()) {
-                snprintf(date_buf, sizeof(date_buf), "Until %02d:%02d", id(snooze_hour), id(snooze_minute));
-              } else if (id(snooze_day_of_year) == now.day_of_year) {
-                snprintf(date_buf, sizeof(date_buf), "Today %02d:%02d", id(snooze_hour), id(snooze_minute));
-              } else if (id(snooze_day_of_year) == now.day_of_year + 1) {
-                snprintf(date_buf, sizeof(date_buf), "Tomorrow %02d:%02d", id(snooze_hour), id(snooze_minute));
-              } else {
-                snprintf(date_buf, sizeof(date_buf), "Until %02d:%02d", id(snooze_hour), id(snooze_minute));
-              }
-            } else if (id(skip_next_ring)) {
-              snprintf(date_buf, sizeof(date_buf), "Skipped");
-            } else if (!now.is_valid() || now.day_of_week < 1 || now.day_of_week > 7 || now.month < 1 || now.month > 12) {
-              snprintf(date_buf, sizeof(date_buf), "--");
-            } else if (!id(next_alarm_available)) {
-                snprintf(date_buf, sizeof(date_buf), "No next ring");
-            } else {
-              auto next_alarm = ESPTime::from_epoch_local(id(next_alarm_epoch));
-              int day_delta = next_alarm.day_of_year - now.day_of_year;
-              if (day_delta < 0) {
-                day_delta += 366;
-              }
-              if (day_delta == 0) {
-                snprintf(date_buf, sizeof(date_buf), "Today\n%02d:%02d", next_alarm.hour, next_alarm.minute);
-              } else if (day_delta == 1) {
-                snprintf(date_buf, sizeof(date_buf), "Tomorrow\n%02d:%02d", next_alarm.hour, next_alarm.minute);
-              } else {
-                snprintf(date_buf, sizeof(date_buf), "%s\n%02d:%02d", day_names[next_alarm.day_of_week - 1], next_alarm.hour, next_alarm.minute);
-              }
-            }
-            return date_buf;
-      - lvgl.widget.update:
-          id: alarm_status_circle
-          bg_color: !lambda |-
-            auto now = id(sntp_time).now();
-            if (!now.is_valid()) {
-              now = id(rtctime).now();
-            }
-            if (id(alarm_ringing)) {
-              return id(alarm_flash_on) ? lv_color_hex(0xFF7043) : lv_color_hex(0xE53935);
-            }
-            if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
-              return lv_color_hex(0x43A047);
-            }
-            if (id(snooze_active)) {
-              return lv_color_hex(0x1E88E5);
-            }
-            if (!id(alarm_enabled)) {
-              return lv_color_hex(0x7B1FA2);
-            }
-            if (id(skip_next_ring)) {
-              return lv_color_hex(0xFFD54F);
-            }
-            return lv_color_hex(0x000000);
+            snprintf(countdown_buf, sizeof(countdown_buf), "%dh %dm", hours, minutes);
+            return countdown_buf;
       - if:
           condition:
             lambda: "return id(alarm_ringing);"
@@ -1755,8 +1831,9 @@ script:
                   - lambda: |-
                       id(ring_controls_visible) = true;
                       id(home_menu_visible) = false;
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, close_menu_button, morning_music_button, menu_music_play_button, media_screen_panel]
-                  - lvgl.widget.show: [snooze_button, stop_button, snooze_hint_label]
+                      id(media_screen_visible) = false;
+                  - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, morning_music_button, menu_music_play_button, media_screen_panel]
+                  - lvgl.widget.show: [clock_state_surface, ring_title_label, snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
                 condition:
@@ -1764,12 +1841,12 @@ script:
                 then:
                   - lambda: |-
                       id(ring_controls_visible) = false;
-                  - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label, morning_music_button, menu_music_play_button]
+                  - lvgl.widget.hide: [ring_title_label, snooze_button, stop_button, snooze_hint_label]
             - if:
                 condition:
                   lambda: "return id(media_screen_visible);"
                 then:
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, morning_music_button]
+                  - lvgl.widget.hide: [clock_state_surface, clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, morning_music_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
                   - lvgl.widget.show: [media_screen_panel]
                 else:
                   - lvgl.widget.hide: [media_screen_panel]
@@ -1777,31 +1854,36 @@ script:
                       condition:
                         lambda: "return id(home_menu_visible);"
                       then:
-                        - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, morning_music_button]
-                        - lvgl.widget.show: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
+                        - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, morning_music_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                        - lvgl.widget.show: [clock_state_surface, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
                       else:
-                        - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
-                        - lvgl.widget.show: [alarm_status_circle, center_tap_button]
+                        - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                        - lvgl.widget.show: [clock_state_surface, clock_time_label, clock_divider, clock_next_label, clock_countdown_label, center_tap_button]
                   - if:
                       condition:
                         lambda: |-
-                          auto now = id(sntp_time).now();
-                          if (!now.is_valid()) {
-                            now = id(rtctime).now();
-                          }
-                          if (!now.is_valid() || !id(alarm_enabled) || !id(next_alarm_available) || id(snooze_active)) {
-                            return false;
-                          }
-                          const int32_t seconds_until_alarm = int32_t(id(next_alarm_epoch)) - int32_t(now.timestamp);
-                          return seconds_until_alarm > 0 && seconds_until_alarm <= (8 * 3600);
+                          return !id(home_menu_visible) && !id(media_screen_visible) && id(alarm_enabled) &&
+                                 !id(alarm_ringing) &&
+                                 (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms) ||
+                                  id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring));
                       then:
-                        - lvgl.widget.show: [sleep_hint_label]
+                        - lvgl.widget.show: [clock_status_pill]
                       else:
-                        - lvgl.widget.hide: [sleep_hint_label]
+                        - lvgl.widget.hide: [clock_status_pill]
                   - if:
                       condition:
                         lambda: |-
-                          return id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
+                          return !id(home_menu_visible) && !id(media_screen_visible) && !id(alarm_ringing) &&
+                                 (!id(alarm_enabled) || id(skip_next_ring));
+                      then:
+                        - lvgl.widget.show: [clock_resume_button]
+                      else:
+                        - lvgl.widget.hide: [clock_resume_button]
+                  - if:
+                      condition:
+                        lambda: |-
+                          return !id(home_menu_visible) && !id(media_screen_visible) &&
+                                 id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
                       then:
                         - lvgl.widget.show: [morning_music_button]
                       else:
@@ -1920,26 +2002,18 @@ script:
 
   - id: update_minutes_hand
     then:
+      - lvgl.label.update:
+          id: clock_time_label
+          text: !lambda |-
+            static char time_buf[8];
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid()) {
+              snprintf(time_buf, sizeof(time_buf), "--:--");
+              return time_buf;
+            }
+            snprintf(time_buf, sizeof(time_buf), "%02d:%02d", now.hour, now.minute);
+            return time_buf;
       - script.execute: update_alarm_status_ui
-      - lvgl.indicator.update:
-          id: hour_hand
-          value: !lambda |-
-            auto now = id(sntp_time).now();
-            if (!now.is_valid()) {
-              now = id(rtctime).now();
-            }
-            if (!now.is_valid()) {
-              return 0.0f;
-            }
-            return std::fmod(now.hour, 12) * 60 + now.minute;
-      - lvgl.indicator.update:
-          id: minute_hand
-          value: !lambda |-
-            auto now = id(sntp_time).now();
-            if (!now.is_valid()) {
-              now = id(rtctime).now();
-            }
-            if (!now.is_valid()) {
-              return 0.0f;
-            }
-            return float(now.minute);
