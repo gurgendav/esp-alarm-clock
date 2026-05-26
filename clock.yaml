@@ -486,7 +486,7 @@ text_sensor:
   - platform: homeassistant
     id: media_track_art_url
     entity_id: ${morning_briefing_player_entity}
-    attribute: entity_picture
+    attribute: entity_picture_local
     internal: true
     on_value:
       then:
@@ -627,7 +627,7 @@ font:
   - file: assets/DejaVuSans.ttf
     id: media_text_font_14
     size: 14
-    glyphs: &media_glyphs " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz[]_{}|~°▶■♪АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+    glyphs: &media_glyphs " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz[]_{}|~°▶Ⅱ■»♪АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
   - file: assets/DejaVuSans.ttf
     id: media_text_font_16
     size: 16
@@ -635,7 +635,7 @@ font:
   - file: assets/DejaVuSans.ttf
     id: media_icon_font_28
     size: 28
-    glyphs: "▶Ⅱ■"
+    glyphs: "▶Ⅱ■»"
 
 lvgl:
   rotation: 0
@@ -1009,7 +1009,7 @@ lvgl:
                   x: -58
                   y: 66
                   align: CENTER
-                  radius: 0
+                  radius: 28
                   bg_color: 0x43A047
                   text_color: White
                   border_width: 0
@@ -1019,9 +1019,13 @@ lvgl:
                       - script.execute: reset_idle_timer
                   widgets:
                     - label:
+                        id: media_play_pause_icon_label
+                        width: 100%
+                        height: 100%
                         align: CENTER
+                        text_align: center
                         text_font: media_icon_font_28
-                        text: "▶Ⅱ"
+                        text: "▶"
               - button:
                   id: media_next_button
                   width: 56
@@ -1029,7 +1033,7 @@ lvgl:
                   x: 0
                   y: 66
                   align: CENTER
-                  radius: 0
+                  radius: 28
                   bg_color: 0x1E88E5
                   text_color: White
                   border_width: 0
@@ -1039,9 +1043,12 @@ lvgl:
                       - script.execute: reset_idle_timer
                   widgets:
                     - label:
+                        width: 100%
+                        height: 100%
                         align: CENTER
+                        text_align: center
                         text_font: media_icon_font_28
-                        text: "▶▶"
+                        text: "»"
               - button:
                   id: media_stop_button
                   width: 56
@@ -1049,18 +1056,21 @@ lvgl:
                   x: 58
                   y: 66
                   align: CENTER
-                  radius: 0
+                  radius: 28
                   bg_color: 0xE53935
                   text_color: White
                   border_width: 0
                   on_click:
                     then:
-                      - script.execute: stop_morning_music_on_ha
                       - script.execute: close_media_screen
                       - script.execute: reset_idle_timer
+                      - script.execute: stop_morning_music_on_ha
                   widgets:
                     - label:
+                        width: 100%
+                        height: 100%
                         align: CENTER
+                        text_align: center
                         text_font: media_icon_font_28
                         text: "■"
         - label:
@@ -1500,6 +1510,14 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant morning music failed: %s", error.c_str());
+      - delay: 1s
+      - homeassistant.action:
+          action: media_player.media_play
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant media_play after music start failed: %s", error.c_str());
 
   - id: stop_morning_music_on_ha
     then:
@@ -1583,7 +1601,17 @@ script:
             - online_image.set_url:
                 id: media_album_art
                 url: !lambda |-
-                  return id(media_track_art_url).state;
+                  static std::string art_url;
+                  const std::string raw = id(media_track_art_url).state;
+                  if (raw.rfind("http://", 0) == 0 || raw.rfind("https://", 0) == 0) {
+                    art_url = raw;
+                  } else if (!raw.empty() && raw[0] == '/') {
+                    art_url = std::string("http://homeassistant.local:8123") + raw;
+                  } else {
+                    art_url = raw;
+                  }
+                  ESP_LOGI("media", "Updating album art URL: %s", art_url.c_str());
+                  return art_url;
                 update: true
           else:
             - lvgl.widget.hide: media_album_art_image
@@ -1602,6 +1630,13 @@ script:
           id: media_volume_arc
           value: !lambda |-
             return int(id(media_volume_level) * 100.0f + 0.5f);
+      - lvgl.label.update:
+          id: media_play_pause_icon_label
+          text: !lambda |-
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "Ⅱ";
+            }
+            return "▶";
       - lvgl.label.update:
           id: media_title_label
           text: !lambda |-
