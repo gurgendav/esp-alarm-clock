@@ -22,7 +22,7 @@ def test_v2_digital_clock_replaces_analog_meter():
 def test_v2_design_font_assets_and_labels_are_present():
     text = read_clock()
     assert "assets/HankenGrotesk-Bold.ttf" in text
-    assert "id: clock_time_font_56" in text
+    assert "id: clock_time_font_66" in text
     assert "TAP TO RESUME" in text
     assert "ONE-TIME" in text
     assert "SNOOZING" in text

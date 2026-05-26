@@ -599,8 +599,8 @@ font:
   # Lumina/Digital redesign fonts: Hanken Grotesk for clock/menu/alarm UI,
   # DejaVu Sans retained for media metadata because it already covers Cyrillic.
   - file: assets/HankenGrotesk-Bold.ttf
-    id: clock_time_font_56
-    size: 56
+    id: clock_time_font_66
+    size: 66
     glyphs: "0123456789:"
   - file: assets/HankenGrotesk-SemiBold.ttf
     id: clock_label_font_12
@@ -667,17 +667,17 @@ lvgl:
             id: clock_time_label
             width: 220
             align: CENTER
-            y: -64
+            y: -76
             text_align: center
             text_color: 0xFFB59C
-            text_font: clock_time_font_56
+            text_font: clock_time_font_66
             text: "--:--"
         - obj:
             id: clock_divider
             width: 142
             height: 2
             align: CENTER
-            y: -18
+            y: -20
             bg_color: 0x3A3D3D
             bg_opa: COVER
             radius: 1
@@ -689,7 +689,7 @@ lvgl:
             width: 96
             height: 24
             align: CENTER
-            y: 10
+            y: 16
             bg_color: 0x00B5C0
             bg_opa: COVER
             radius: 12
@@ -705,19 +705,19 @@ lvgl:
                   text: ""
         - label:
             id: clock_next_label
-            width: 220
+            width: 226
             align: CENTER
-            y: 40
+            y: 50
             text_align: center
             text_color: 0xF4F4F4
-            text_font: clock_body_font_18
+            text_font: clock_body_font_16
             long_mode: dot
             text: "Next Ring: --:--"
         - label:
             id: clock_countdown_label
             width: 180
             align: CENTER
-            y: 66
+            y: 78
             text_align: center
             text_color: 0x8E9696
             text_font: clock_body_font_16
