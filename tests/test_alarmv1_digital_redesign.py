@@ -22,7 +22,7 @@ def test_v2_digital_clock_replaces_analog_meter():
 def test_v2_design_font_assets_and_labels_are_present():
     text = read_clock()
     assert "assets/HankenGrotesk-Bold.ttf" in text
-    assert "id: clock_time_font_72" in text
+    assert "id: clock_time_font_80" in text
     assert "TAP TO RESUME" in text
     assert "ONE-TIME" in text
     assert "SNOOZING" in text
@@ -35,8 +35,8 @@ def test_v2_design_font_assets_and_labels_are_present():
 
 def test_v2_skip_resume_layout_stays_inside_round_screen():
     text = read_clock()
-    assert "id: clock_time_label\n            width: 220\n            align: CENTER\n            y: -66" in text
-    assert "id: clock_divider\n            width: 142\n            height: 2\n            align: CENTER\n            y: -10" in text
+    assert "id: clock_time_label\n            width: 220\n            align: CENTER\n            y: -56" in text
+    assert "id: clock_divider\n            width: 142\n            height: 2\n            align: CENTER\n            y: 0" in text
     assert "id: clock_resume_button\n            hidden: true\n            width: 140\n            height: 28" in text
     assert "radius: 14\n            bg_opa: TRANSP" in text
     assert "shadow_width: 0\n            pad_all: 0" in text
