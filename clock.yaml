@@ -74,7 +74,9 @@ rc522_i2c:
 
 output:
   - platform: ledc
-    pin: GPIO3
+    pin:
+      number: GPIO3
+      ignore_strapping_warning: true
     id: buzzer
     frequency: 2000 Hz
   - platform: ledc
