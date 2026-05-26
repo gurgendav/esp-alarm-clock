@@ -725,7 +725,7 @@ lvgl:
             height: 120
             align: CENTER
             bg_color: Black
-            bg_opa: 85%
+            bg_opa: COVER
             radius: 60
             clip_corner: true
             pad_all: 0
