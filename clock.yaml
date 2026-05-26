@@ -70,12 +70,10 @@ online_image:
     update_interval: never
     on_download_finished:
       then:
-        - lvgl.widget.hide: media_art_placeholder
         - lvgl.widget.show: media_album_art_image
     on_error:
       then:
         - lvgl.widget.hide: media_album_art_image
-        - lvgl.widget.show: media_art_placeholder
 
 ota:
   - platform: esphome
@@ -958,27 +956,8 @@ lvgl:
                   adjustable: false
                   arc_width: 8
                   arc_color: 0x43A047
-              - obj:
-                  id: media_art_placeholder
-                  width: 56
-                  height: 56
-                  align: CENTER
-                  y: -62
-                  bg_color: 0x263238
-                  bg_opa: COVER
-                  radius: 0
-                  border_width: 1
-                  border_color: 0x455A64
-                  widgets:
-                    - label:
-                        align: CENTER
-                        text_align: center
-                        text_color: 0xB0BEC5
-                        text_font: media_text_font_16
-                        text: "♪"
               - image:
                   id: media_album_art_image
-                  hidden: true
                   src: media_album_art
                   align: CENTER
                   y: -62
@@ -1610,12 +1589,11 @@ script:
                   } else {
                     art_url = raw;
                   }
-                  ESP_LOGI("media", "Updating album art URL: %s", art_url.c_str());
+                  ESP_LOGI("media", "Updating album art URL for 56x56 render: %s", art_url.c_str());
                   return art_url;
                 update: true
           else:
             - lvgl.widget.hide: media_album_art_image
-            - lvgl.widget.show: media_art_placeholder
 
   - id: show_media_volume_overlay
     then:
