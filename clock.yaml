@@ -162,7 +162,23 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: media_screen_visible
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: media_volume_level
+    type: float
+    restore_value: no
+    initial_value: "0.5"
+  - id: media_volume_overlay_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: dismiss_feedback_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: morning_music_prompt_until_ms
     type: uint32_t
     restore_value: no
     initial_value: "0"
@@ -250,6 +266,17 @@ sensor:
             step_minutes = 5;
           }
 
+          if (id(media_screen_visible)) {
+            id(media_volume_level) += 0.05f;
+            if (id(media_volume_level) > 1.0f) {
+              id(media_volume_level) = 1.0f;
+            }
+            ESP_LOGI("media", "Volume adjusted clockwise to %.0f%%", id(media_volume_level) * 100.0f);
+            id(show_media_volume_overlay).execute();
+            id(set_morning_music_volume_on_ha).execute();
+            return;
+          }
+
           if (id(alarm_ringing)) {
             id(snooze_minutes) += step_minutes;
             if (id(snooze_minutes) > 60) {
@@ -302,6 +329,17 @@ sensor:
             step_minutes = 5;
           }
 
+          if (id(media_screen_visible)) {
+            id(media_volume_level) -= 0.05f;
+            if (id(media_volume_level) < 0.0f) {
+              id(media_volume_level) = 0.0f;
+            }
+            ESP_LOGI("media", "Volume adjusted anticlockwise to %.0f%%", id(media_volume_level) * 100.0f);
+            id(show_media_volume_overlay).execute();
+            id(set_morning_music_volume_on_ha).execute();
+            return;
+          }
+
           if (id(alarm_ringing)) {
             id(snooze_minutes) -= step_minutes;
             if (id(snooze_minutes) < 5) {
@@ -335,6 +373,19 @@ sensor:
           id(update_minutes_hand).execute();
           auto next_alarm = ESPTime::from_epoch_local(uint32_t(candidate_epoch));
           ESP_LOGI("alarm", "Next ring override adjusted anticlockwise by %d minutes to %02d:%02d", step_minutes, next_alarm.hour, next_alarm.minute);
+
+  - platform: homeassistant
+    id: media_player_volume
+    entity_id: ${morning_briefing_player_entity}
+    attribute: volume_level
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            if (!isnan(x)) {
+              id(media_volume_level) = x;
+            }
+        - script.execute: update_media_screen_ui
 
 time:
   - platform: pcf8563
@@ -381,6 +432,37 @@ datetime:
       then:
         - script.execute: update_minutes_hand
 text_sensor:
+  - platform: homeassistant
+    id: media_player_state
+    entity_id: ${morning_briefing_player_entity}
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_title
+    entity_id: ${morning_briefing_player_entity}
+    attribute: media_title
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_artist
+    entity_id: ${morning_briefing_player_entity}
+    attribute: media_artist
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_album
+    entity_id: ${morning_briefing_player_entity}
+    attribute: media_album_name
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_screen_ui
   - platform: template
     id: next_alarm_time_text
     name: "Next Alarm Time"
@@ -457,11 +539,15 @@ binary_sensor:
               else:
                 - if:
                     condition:
-                      lambda: "return id(home_menu_visible);"
+                      lambda: "return !id(media_screen_visible);"
                     then:
-                      - script.execute: close_home_menu
-                    else:
-                      - script.execute: open_home_menu
+                      - if:
+                          condition:
+                            lambda: "return id(home_menu_visible);"
+                          then:
+                            - script.execute: close_home_menu
+                          else:
+                            - script.execute: open_home_menu
           - script.execute: reset_idle_timer
 
 spi:
@@ -474,6 +560,7 @@ touchscreen:
   id: dial_touchscreen
   i2c_id: internal_i2c
   address: 0x38
+  interrupt_pin: GPIO14
   touch_timeout: 250ms
   on_touch:
     - if:
@@ -507,6 +594,20 @@ display:
     auto_clear_enabled: false
     update_interval: never
     data_rate: 40MHz
+
+font:
+  - file: assets/DejaVuSans.ttf
+    id: media_text_font_14
+    size: 14
+    glyphs: &media_glyphs " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz[]_{}|~°▶Ⅱ■»♪АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+  - file: assets/DejaVuSans.ttf
+    id: media_text_font_16
+    size: 16
+    glyphs: *media_glyphs
+  - file: assets/DejaVuSans.ttf
+    id: media_icon_font_28
+    size: 28
+    glyphs: "▶Ⅱ■»"
 
 lvgl:
   rotation: 0
@@ -596,7 +697,7 @@ lvgl:
             height: 120
             align: CENTER
             bg_color: Black
-            bg_opa: 85%
+            bg_opa: COVER
             radius: 60
             clip_corner: true
             pad_all: 0
@@ -630,13 +731,13 @@ lvgl:
               then:
                 - if:
                     condition:
-                      lambda: "return !id(alarm_enabled) && !id(alarm_ringing) && !id(home_menu_visible);"
+                      lambda: "return !id(alarm_enabled) && !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                     then:
                       - script.execute: enable_alarm
                     else:
                       - if:
                           condition:
-                            lambda: "return !id(alarm_ringing) && !id(home_menu_visible);"
+                            lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                           then:
                             - script.execute: toggle_skip_next_ring
                 - script.execute: reset_idle_timer
@@ -644,7 +745,7 @@ lvgl:
               then:
                 - if:
                     condition:
-                      lambda: "return !id(alarm_ringing) && !id(home_menu_visible);"
+                      lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                     then:
                       - script.execute: open_home_menu
                 - script.execute: reset_idle_timer
@@ -660,8 +761,8 @@ lvgl:
         - obj:
             id: home_menu_panel
             hidden: true
-            width: 168
-            height: 118
+            width: 190
+            height: 138
             align: CENTER
             bg_color: 0x111111
             bg_opa: 92%
@@ -681,7 +782,7 @@ lvgl:
             width: 118
             height: 42
             align: CENTER
-            y: 10
+            y: -16
             radius: 21
             bg_color: 0x37474F
             text_color: White
@@ -696,12 +797,41 @@ lvgl:
                   align: CENTER
                   text: "All Off"
         - button:
+            id: menu_music_play_button
+            hidden: true
+            width: 118
+            height: 42
+            align: CENTER
+            y: 38
+            radius: 21
+            bg_color: 0x43A047
+            text_color: White
+            border_width: 0
+            on_click:
+              then:
+                - if:
+                    condition:
+                      lambda: |-
+                        return id(media_player_state).has_state() && id(media_player_state).state == "playing";
+                    then:
+                      - script.execute: open_media_screen
+                    else:
+                      - script.execute: open_media_screen
+                      - script.execute: play_morning_music_on_ha
+                - script.execute: reset_idle_timer
+            widgets:
+              - label:
+                  id: menu_music_play_label
+                  align: CENTER
+                  text_align: center
+                  text: "Start music"
+        - button:
             id: close_menu_button
             hidden: true
             width: 34
             height: 34
-            x: 54
-            y: -28
+            x: 66
+            y: -38
             align: CENTER
             radius: 17
             bg_color: 0x546E7A
@@ -757,6 +887,148 @@ lvgl:
                   align: CENTER
                   text_align: center
                   text: "Stop"
+        - button:
+            id: morning_music_button
+            hidden: true
+            width: 104
+            height: 38
+            align: CENTER
+            y: 74
+            radius: 19
+            bg_color: 0x43A047
+            text_color: White
+            border_width: 0
+            on_click:
+              then:
+                - script.execute: open_media_screen
+                - script.execute: play_morning_music_on_ha
+                - lambda: |-
+                    id(morning_music_prompt_until_ms) = 0;
+                - script.execute: update_alarm_status_ui
+                - script.execute: reset_idle_timer
+            widgets:
+              - label:
+                  align: CENTER
+                  text_align: center
+                  text: "Music"
+        - obj:
+            id: media_screen_panel
+            hidden: true
+            width: 100%
+            height: 100%
+            align: CENTER
+            bg_color: Black
+            bg_opa: COVER
+            radius: 0
+            clip_corner: false
+            pad_all: 0
+            border_width: 0
+            widgets:
+              - arc:
+                  id: media_volume_arc
+                  hidden: true
+                  width: 226
+                  height: 226
+                  align: CENTER
+                  value: 50
+                  min_value: 0
+                  max_value: 100
+                  start_angle: 135
+                  end_angle: 45
+                  adjustable: false
+                  arc_width: 8
+                  arc_color: 0x43A047
+              - label:
+                  id: media_title_label
+                  width: 204
+                  align: CENTER
+                  y: -54
+                  text_align: center
+                  text_color: White
+                  text_font: media_text_font_16
+                  long_mode: dot
+                  text: "No track"
+              - label:
+                  id: media_artist_label
+                  width: 196
+                  align: CENTER
+                  y: -24
+                  text_align: center
+                  text_color: 0xB0BEC5
+                  text_font: media_text_font_14
+                  long_mode: dot
+                  text: ""
+              - button:
+                  id: media_play_pause_button
+                  width: 52
+                  height: 52
+                  x: -56
+                  y: 46
+                  align: CENTER
+                  radius: 26
+                  bg_color: 0x43A047
+                  text_color: White
+                  border_width: 0
+                  on_click:
+                    then:
+                      - script.execute: media_play_pause_on_ha
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        id: media_play_pause_icon_label
+                        width: 100%
+                        height: 100%
+                        align: CENTER
+                        text_align: center
+                        text_font: media_icon_font_28
+                        text: "▶"
+              - button:
+                  id: media_next_button
+                  width: 52
+                  height: 52
+                  x: 0
+                  y: 46
+                  align: CENTER
+                  radius: 26
+                  bg_color: 0x1E88E5
+                  text_color: White
+                  border_width: 0
+                  on_click:
+                    then:
+                      - script.execute: media_next_track_on_ha
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        width: 100%
+                        height: 100%
+                        align: CENTER
+                        text_align: center
+                        text_font: media_icon_font_28
+                        text: "»"
+              - button:
+                  id: media_stop_button
+                  width: 52
+                  height: 52
+                  x: 56
+                  y: 46
+                  align: CENTER
+                  radius: 26
+                  bg_color: 0xE53935
+                  text_color: White
+                  border_width: 0
+                  on_click:
+                    then:
+                      - script.execute: close_media_screen
+                      - script.execute: reset_idle_timer
+                      - script.execute: stop_morning_music_on_ha
+                  widgets:
+                    - label:
+                        width: 100%
+                        height: 100%
+                        align: CENTER
+                        text_align: center
+                        text_font: media_icon_font_28
+                        text: "■"
         - label:
             id: snooze_hint_label
             hidden: true
@@ -782,6 +1054,17 @@ interval:
             struct timeval tv;
             gettimeofday(&tv, NULL);
             return (now.second * 12) + (tv.tv_usec / 83330.0);
+
+  - interval: 250ms
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(media_screen_visible) && id(media_volume_overlay_until_ms) != 0 && millis() > id(media_volume_overlay_until_ms);
+          then:
+            - lambda: |-
+                id(media_volume_overlay_until_ms) = 0;
+            - lvgl.widget.hide: media_volume_arc
 
   - interval: 1s
     then:
@@ -879,7 +1162,7 @@ interval:
             - if:
                 condition:
                   lambda: |-
-                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0;
+                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0 || id(morning_music_prompt_until_ms) != 0;
                 then:
                   - lambda: |-
                       if (id(alarm_flash_on)) {
@@ -887,6 +1170,9 @@ interval:
                       }
                       if (id(dismiss_feedback_until_ms) != 0 && millis() >= id(dismiss_feedback_until_ms)) {
                         id(dismiss_feedback_until_ms) = 0;
+                      }
+                      if (id(morning_music_prompt_until_ms) != 0 && millis() >= id(morning_music_prompt_until_ms)) {
+                        id(morning_music_prompt_until_ms) = 0;
                       }
                   - script.execute: update_alarm_status_ui
 
@@ -1000,6 +1286,7 @@ script:
     then:
       - lambda: |-
           id(dismiss_feedback_until_ms) = millis() + 3000;
+          id(morning_music_prompt_until_ms) = millis() + 60000;
       - script.execute: clear_snooze
       - script.execute: stop_alarm
       - script.execute: play_morning_briefing_on_ha
@@ -1164,6 +1451,152 @@ script:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant morning briefing failed: %s", error.c_str());
 
+  - id: play_morning_music_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant morning music on %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: ${morning_briefing_action}
+          data:
+            media_player_entity_id: ${morning_briefing_player_entity}
+            music_only: "true"
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant morning music");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning music failed: %s", error.c_str());
+      - delay: 1s
+      - homeassistant.action:
+          action: media_player.media_play
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant media_play after music start failed: %s", error.c_str());
+
+  - id: stop_morning_music_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant morning music stop for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: media_player.media_stop
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant morning music stop for %s", "${morning_briefing_player_entity}");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning music stop failed: %s", error.c_str());
+
+  - id: open_media_screen
+    then:
+      - lambda: |-
+          id(media_screen_visible) = true;
+          id(home_menu_visible) = false;
+          ESP_LOGI("media", "Media screen opened");
+      - script.stop: auto_close_home_menu
+      - script.execute: update_media_screen_ui
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+
+  - id: close_media_screen
+    then:
+      - lambda: |-
+          id(media_screen_visible) = false;
+          ESP_LOGI("media", "Media screen closed");
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+
+  - id: media_play_pause_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("media", "Requesting media play/pause for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: media_player.media_play_pause
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("media", "Media play/pause failed: %s", error.c_str());
+
+  - id: media_next_track_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("media", "Requesting media next track for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: media_player.media_next_track
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("media", "Media next track failed: %s", error.c_str());
+
+  - id: set_morning_music_volume_on_ha
+    mode: restart
+    then:
+      - homeassistant.action:
+          action: media_player.volume_set
+          data:
+            entity_id: ${morning_briefing_player_entity}
+            volume_level: !lambda |-
+              return id(media_volume_level);
+          on_error:
+            - lambda: |-
+                ESP_LOGW("media", "Media volume set failed: %s", error.c_str());
+
+  - id: show_media_volume_overlay
+    then:
+      - lambda: |-
+          id(media_volume_overlay_until_ms) = millis() + 1500;
+      - lvgl.widget.show: media_volume_arc
+      - script.execute: update_media_screen_ui
+
+  - id: update_media_screen_ui
+    then:
+      - lvgl.arc.update:
+          id: media_volume_arc
+          value: !lambda |-
+            return int(id(media_volume_level) * 100.0f + 0.5f);
+      - lvgl.label.update:
+          id: menu_music_play_label
+          text: !lambda |-
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "Open music";
+            }
+            return "Start music";
+      - lvgl.label.update:
+          id: media_play_pause_icon_label
+          text: !lambda |-
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "Ⅱ";
+            }
+            return "▶";
+      - lvgl.label.update:
+          id: media_title_label
+          text: !lambda |-
+            if (id(media_track_title).has_state() && !id(media_track_title).state.empty()) {
+              return id(media_track_title).state.c_str();
+            }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "Playing";
+            }
+            return "No track";
+      - lvgl.label.update:
+          id: media_artist_label
+          text: !lambda |-
+            if (id(media_track_artist).has_state() && !id(media_track_artist).state.empty()) {
+              return id(media_track_artist).state.c_str();
+            }
+            if (id(media_track_album).has_state() && !id(media_track_album).state.empty()) {
+              return id(media_track_album).state.c_str();
+            }
+            if (id(media_player_state).has_state()) {
+              return id(media_player_state).state.c_str();
+            }
+            return "Rotate = volume";
+
   - id: reset_idle_timer
     mode: restart
     then:
@@ -1322,7 +1755,7 @@ script:
                   - lambda: |-
                       id(ring_controls_visible) = true;
                       id(home_menu_visible) = false;
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, close_menu_button]
+                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, close_menu_button, morning_music_button, menu_music_play_button, media_screen_panel]
                   - lvgl.widget.show: [snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
@@ -1331,16 +1764,24 @@ script:
                 then:
                   - lambda: |-
                       id(ring_controls_visible) = false;
-                  - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label]
+                  - lvgl.widget.hide: [snooze_button, stop_button, snooze_hint_label, morning_music_button, menu_music_play_button]
             - if:
                 condition:
-                  lambda: "return id(home_menu_visible);"
+                  lambda: "return id(media_screen_visible);"
                 then:
-                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label]
-                  - lvgl.widget.show: [home_menu_panel, all_lights_off_button, close_menu_button]
+                  - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, morning_music_button]
+                  - lvgl.widget.show: [media_screen_panel]
                 else:
-                  - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, close_menu_button]
-                  - lvgl.widget.show: [alarm_status_circle, center_tap_button]
+                  - lvgl.widget.hide: [media_screen_panel]
+                  - if:
+                      condition:
+                        lambda: "return id(home_menu_visible);"
+                      then:
+                        - lvgl.widget.hide: [alarm_status_circle, center_tap_button, sleep_hint_label, morning_music_button]
+                        - lvgl.widget.show: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
+                      else:
+                        - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
+                        - lvgl.widget.show: [alarm_status_circle, center_tap_button]
                   - if:
                       condition:
                         lambda: |-
@@ -1357,6 +1798,14 @@ script:
                         - lvgl.widget.show: [sleep_hint_label]
                       else:
                         - lvgl.widget.hide: [sleep_hint_label]
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
+                      then:
+                        - lvgl.widget.show: [morning_music_button]
+                      else:
+                        - lvgl.widget.hide: [morning_music_button]
 
   - id: apply_snooze_duration
     parameters:
@@ -1402,6 +1851,7 @@ script:
           id(snooze_minutes) = 10;
           id(alarm_ringing) = true;
           id(home_menu_visible) = false;
+          id(media_screen_visible) = false;
           auto now = id(sntp_time).now();
           if (!now.is_valid()) {
             now = id(rtctime).now();
