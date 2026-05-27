@@ -188,6 +188,10 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: morning_music_start_pending
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: next_ring_override_active
     type: bool
     restore_value: yes
@@ -317,6 +321,11 @@ sensor:
             return;
           }
 
+          if (id(skip_next_ring)) {
+            ESP_LOGI("alarm", "Ignoring encoder turn while next ring is skipped");
+            return;
+          }
+
           auto now = id(sntp_time).now();
           if (!now.is_valid()) {
             now = id(rtctime).now();
@@ -396,6 +405,11 @@ sensor:
             id(snooze_minute) = snooze_until.minute;
             ESP_LOGI("alarm", "Active snooze adjusted anticlockwise to %02d:%02d", id(snooze_hour), id(snooze_minute));
             id(update_minutes_hand).execute();
+            return;
+          }
+
+          if (id(skip_next_ring)) {
+            ESP_LOGI("alarm", "Ignoring encoder turn while next ring is skipped");
             return;
           }
 
@@ -715,7 +729,7 @@ lvgl:
             id: clock_time_label
             width: 220
             align: CENTER
-            y: -48
+            y: -40
             text_align: center
             text_color: 0xFFB59C
             text_font: clock_time_font_82
@@ -1215,9 +1229,9 @@ lvgl:
                   widgets:
                     - label:
                         id: media_play_pause_icon_label
-                        width: 100%
-                        height: 100%
                         align: CENTER
+                        x: 2
+                        y: 1
                         text_align: center
                         text_color: Black
                         text_font: media_icon_font_28
@@ -1678,8 +1692,10 @@ script:
                 ESP_LOGW("alarm", "Home Assistant morning briefing with music failed: %s", error.c_str());
 
   - id: play_morning_music_on_ha
+    mode: restart
     then:
       - lambda: |-
+          id(morning_music_start_pending) = true;
           ESP_LOGI("alarm", "Requesting Home Assistant morning music on %s", "${morning_briefing_player_entity}");
       - homeassistant.action:
           action: ${morning_briefing_action}
@@ -1691,20 +1707,41 @@ script:
                 ESP_LOGI("alarm", "Requested Home Assistant morning music");
           on_error:
             - lambda: |-
+                id(morning_music_start_pending) = false;
                 ESP_LOGW("alarm", "Home Assistant morning music failed: %s", error.c_str());
-      - delay: 1s
       - homeassistant.action:
           action: media_player.media_play
           data:
             entity_id: ${morning_briefing_player_entity}
           on_error:
             - lambda: |-
-                ESP_LOGW("alarm", "Home Assistant media_play after music start failed: %s", error.c_str());
+                ESP_LOGW("alarm", "Immediate Home Assistant media_play after music start failed: %s", error.c_str());
+      - delay: 2s
+      - if:
+          condition:
+            lambda: "return id(morning_music_start_pending);"
+          then:
+            - homeassistant.action:
+                action: media_player.media_play
+                data:
+                  entity_id: ${morning_briefing_player_entity}
+                on_error:
+                  - lambda: |-
+                      ESP_LOGW("alarm", "Follow-up Home Assistant media_play after music start failed: %s", error.c_str());
 
   - id: stop_morning_music_on_ha
     then:
+      - script.stop: play_morning_music_on_ha
       - lambda: |-
+          id(morning_music_start_pending) = false;
           ESP_LOGI("alarm", "Requesting Home Assistant morning music stop for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: script.turn_off
+          data:
+            entity_id: ${morning_briefing_action}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning music script cancel failed: %s", error.c_str());
       - homeassistant.action:
           action: media_player.media_stop
           data:
