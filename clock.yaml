@@ -184,6 +184,10 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: morning_briefing_auto_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: next_ring_override_active
     type: bool
     restore_value: yes
@@ -290,7 +294,26 @@ sensor:
           }
 
           if (id(snooze_active)) {
-            ESP_LOGI("alarm", "Ignoring clockwise encoder turn while alarm is snoozed");
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid()) {
+              ESP_LOGW("alarm", "Ignoring clockwise encoder turn while snoozed because current time is invalid");
+              return;
+            }
+            uint32_t candidate_epoch = id(next_alarm_available) ? id(next_alarm_epoch) : uint32_t(now.timestamp + (id(snooze_minutes) * 60));
+            const uint32_t max_epoch = uint32_t(now.timestamp + (60 * 60));
+            candidate_epoch += (step_minutes * 60);
+            if (candidate_epoch > max_epoch) {
+              candidate_epoch = max_epoch;
+            }
+            auto snooze_until = ESPTime::from_epoch_local(candidate_epoch);
+            id(snooze_day_of_year) = snooze_until.day_of_year;
+            id(snooze_hour) = snooze_until.hour;
+            id(snooze_minute) = snooze_until.minute;
+            ESP_LOGI("alarm", "Active snooze adjusted clockwise to %02d:%02d", id(snooze_hour), id(snooze_minute));
+            id(update_minutes_hand).execute();
             return;
           }
 
@@ -353,7 +376,26 @@ sensor:
           }
 
           if (id(snooze_active)) {
-            ESP_LOGI("alarm", "Ignoring anticlockwise encoder turn while alarm is snoozed");
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid()) {
+              ESP_LOGW("alarm", "Ignoring anticlockwise encoder turn while snoozed because current time is invalid");
+              return;
+            }
+            int32_t candidate_epoch = int32_t(id(next_alarm_available) ? id(next_alarm_epoch) : uint32_t(now.timestamp + (id(snooze_minutes) * 60)));
+            const int32_t min_epoch = int32_t(((uint32_t(now.timestamp) / 60) + 1) * 60);
+            candidate_epoch -= (step_minutes * 60);
+            if (candidate_epoch < min_epoch) {
+              candidate_epoch = min_epoch;
+            }
+            auto snooze_until = ESPTime::from_epoch_local(uint32_t(candidate_epoch));
+            id(snooze_day_of_year) = snooze_until.day_of_year;
+            id(snooze_hour) = snooze_until.hour;
+            id(snooze_minute) = snooze_until.minute;
+            ESP_LOGI("alarm", "Active snooze adjusted anticlockwise to %02d:%02d", id(snooze_hour), id(snooze_minute));
+            id(update_minutes_hand).execute();
             return;
           }
 
@@ -607,7 +649,7 @@ font:
   - file: assets/HankenGrotesk-SemiBold.ttf
     id: clock_label_font_12
     size: 12
-    glyphs: &clock_text_glyphs ' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:-,./'
+    glyphs: &clock_text_glyphs ' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:-,./+'
   - file: assets/HankenGrotesk-SemiBold.ttf
     id: clock_body_font_16
     size: 16
@@ -980,25 +1022,37 @@ lvgl:
                   text_color: 0xFFB4AB
                   text_font: clock_body_font_20
                   text: "STOP"
-        - button:
-            id: morning_music_button
+        - label:
+            id: briefing_prompt_label
             hidden: true
-            width: 132
-            height: 36
+            width: 196
             align: CENTER
-            y: 88
-            radius: 18
-            bg_color: 0xFFB59C
+            y: 34
+            text_align: center
+            text_color: 0xF4FFFF
+            text_font: clock_label_font_12
+            text: "Briefing in 15s"
+        - button:
+            id: briefing_start_button
+            hidden: true
+            width: 92
+            height: 30
+            align: CENTER
+            x: -52
+            y: 62
+            radius: 15
+            bg_color: 0xB8F5C1
             bg_opa: COVER
             text_color: Black
             border_width: 0
             shadow_width: 0
+            pad_all: 0
             on_click:
               then:
-                - script.execute: open_media_screen
-                - script.execute: play_morning_music_on_ha
                 - lambda: |-
                     id(morning_music_prompt_until_ms) = 0;
+                    id(morning_briefing_auto_start_ms) = 0;
+                - script.execute: play_morning_briefing_on_ha
                 - script.execute: update_alarm_status_ui
                 - script.execute: reset_idle_timer
             widgets:
@@ -1006,8 +1060,66 @@ lvgl:
                   align: CENTER
                   text_align: center
                   text_color: Black
-                  text_font: clock_body_font_16
-                  text: "Start Music"
+                  text_font: clock_label_font_12
+                  text: "Briefing"
+        - button:
+            id: briefing_music_button
+            hidden: true
+            width: 110
+            height: 30
+            align: CENTER
+            x: 48
+            y: 62
+            radius: 15
+            bg_color: 0xFFB59C
+            bg_opa: COVER
+            text_color: Black
+            border_width: 0
+            shadow_width: 0
+            pad_all: 0
+            on_click:
+              then:
+                - lambda: |-
+                    id(morning_music_prompt_until_ms) = 0;
+                    id(morning_briefing_auto_start_ms) = 0;
+                - script.execute: play_morning_briefing_with_music_on_ha
+                - script.execute: update_alarm_status_ui
+                - script.execute: reset_idle_timer
+            widgets:
+              - label:
+                  align: CENTER
+                  text_align: center
+                  text_color: Black
+                  text_font: clock_label_font_12
+                  text: "Brief+Music"
+        - button:
+            id: briefing_dismiss_button
+            hidden: true
+            width: 96
+            height: 28
+            align: CENTER
+            y: 92
+            radius: 14
+            bg_opa: TRANSP
+            text_color: 0xF4FFFF
+            border_width: 1
+            border_color: 0x8DECF2
+            shadow_width: 0
+            pad_all: 0
+            on_click:
+              then:
+                - lambda: |-
+                    id(morning_music_prompt_until_ms) = 0;
+                    id(morning_briefing_auto_start_ms) = 0;
+                - script.execute: update_alarm_status_ui
+                - script.execute: reset_idle_timer
+            widgets:
+              - label:
+                  align: CENTER
+                  text_align: center
+                  text_color: 0xF4FFFF
+                  text_font: clock_label_font_12
+                  text: "Dismiss"
         - obj:
             id: media_screen_panel
             hidden: true
@@ -1245,19 +1357,33 @@ interval:
             - if:
                 condition:
                   lambda: |-
-                    return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0 || id(morning_music_prompt_until_ms) != 0;
+                    return id(morning_music_prompt_until_ms) != 0 && id(morning_briefing_auto_start_ms) != 0 &&
+                           millis() >= id(morning_briefing_auto_start_ms);
                 then:
                   - lambda: |-
-                      if (id(alarm_flash_on)) {
-                        id(alarm_flash_on) = false;
-                      }
-                      if (id(dismiss_feedback_until_ms) != 0 && millis() >= id(dismiss_feedback_until_ms)) {
-                        id(dismiss_feedback_until_ms) = 0;
-                      }
-                      if (id(morning_music_prompt_until_ms) != 0 && millis() >= id(morning_music_prompt_until_ms)) {
-                        id(morning_music_prompt_until_ms) = 0;
-                      }
+                      id(morning_music_prompt_until_ms) = 0;
+                      id(morning_briefing_auto_start_ms) = 0;
+                  - script.execute: play_morning_briefing_on_ha
                   - script.execute: update_alarm_status_ui
+                else:
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(alarm_flash_on) || id(dismiss_feedback_until_ms) != 0 ||
+                                 id(morning_music_prompt_until_ms) != 0 || id(morning_briefing_auto_start_ms) != 0;
+                      then:
+                        - lambda: |-
+                            if (id(alarm_flash_on)) {
+                              id(alarm_flash_on) = false;
+                            }
+                            if (id(dismiss_feedback_until_ms) != 0 && millis() >= id(dismiss_feedback_until_ms)) {
+                              id(dismiss_feedback_until_ms) = 0;
+                            }
+                            if (id(morning_music_prompt_until_ms) != 0 && millis() >= id(morning_music_prompt_until_ms)) {
+                              id(morning_music_prompt_until_ms) = 0;
+                              id(morning_briefing_auto_start_ms) = 0;
+                            }
+                        - script.execute: update_alarm_status_ui
 
 script:
   - id: sync_next_alarm_state
@@ -1368,11 +1494,12 @@ script:
   - id: dismiss_alarm
     then:
       - lambda: |-
-          id(dismiss_feedback_until_ms) = millis() + 3000;
-          id(morning_music_prompt_until_ms) = millis() + 60000;
+          const uint32_t now_ms = millis();
+          id(dismiss_feedback_until_ms) = now_ms + 3000;
+          id(morning_music_prompt_until_ms) = now_ms + 60000;
+          id(morning_briefing_auto_start_ms) = now_ms + 15000;
       - script.execute: clear_snooze
       - script.execute: stop_alarm
-      - script.execute: play_morning_briefing_on_ha
 
   - id: sync_alarm_day_state
     then:
@@ -1533,6 +1660,22 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant morning briefing failed: %s", error.c_str());
+
+  - id: play_morning_briefing_with_music_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant morning briefing with music on %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: ${morning_briefing_action}
+          data:
+            media_player_entity_id: ${morning_briefing_player_entity}
+            play_music_after: "true"
+          on_success:
+            - lambda: |-
+                ESP_LOGI("alarm", "Requested Home Assistant morning briefing with music");
+          on_error:
+            - lambda: |-
+                ESP_LOGW("alarm", "Home Assistant morning briefing with music failed: %s", error.c_str());
 
   - id: play_morning_music_on_ha
     then:
@@ -1702,10 +1845,31 @@ script:
             snprintf(snooze_buf, sizeof(snooze_buf), "Snooze %dm", id(snooze_minutes));
             return snooze_buf;
       - lvgl.label.update:
+          id: briefing_prompt_label
+          text: !lambda |-
+            static char briefing_buf[32];
+            if (id(morning_music_prompt_until_ms) == 0 || millis() >= id(morning_music_prompt_until_ms)) {
+              snprintf(briefing_buf, sizeof(briefing_buf), "");
+              return briefing_buf;
+            }
+            if (id(morning_briefing_auto_start_ms) != 0 && millis() < id(morning_briefing_auto_start_ms)) {
+              const uint32_t remaining_seconds = (id(morning_briefing_auto_start_ms) - millis() + 999) / 1000;
+              snprintf(briefing_buf, sizeof(briefing_buf), "Briefing in %us", (unsigned) remaining_seconds);
+              return briefing_buf;
+            }
+            snprintf(briefing_buf, sizeof(briefing_buf), "Choose morning action");
+            return briefing_buf;
+      - lvgl.label.update:
           id: clock_status_pill_label
           text: !lambda |-
+            if (id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms)) {
+              return "BRIEFING";
+            }
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return "STOPPED";
+            }
+            if (!id(alarm_enabled)) {
+              return "AWAY";
             }
             if (id(snooze_active)) {
               return "SNOOZING";
@@ -1716,27 +1880,42 @@ script:
             if (id(skip_next_ring)) {
               return "SKIPPED";
             }
-            return "";
+            return "ON";
       - lvgl.widget.update:
           id: clock_status_pill
           bg_color: !lambda |-
+            if (id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms)) {
+              return lv_color_hex(0x4B2E63);
+            }
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return lv_color_hex(0x2A1511);
             }
-            if (id(snooze_active) || id(skip_next_ring)) {
+            if (!id(alarm_enabled)) {
+              return lv_color_hex(0xB6F7FF);
+            }
+            if (id(snooze_active)) {
               return lv_color_hex(0x4DD9E4);
             }
             if (id(next_ring_override_active)) {
               return lv_color_hex(0xFFB59C);
             }
-            return lv_color_hex(0x4DD9E4);
+            if (id(skip_next_ring)) {
+              return lv_color_hex(0xFFD166);
+            }
+            return lv_color_hex(0x17351F);
       - lvgl.label.update:
           id: clock_status_pill_label
           text_color: !lambda |-
+            if (id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms)) {
+              return lv_color_hex(0xF5D9FF);
+            }
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return lv_color_hex(0xFFB4AB);
             }
-            return lv_color_hex(0x000000);
+            if (!id(alarm_enabled) || id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring)) {
+              return lv_color_hex(0x000000);
+            }
+            return lv_color_hex(0xB8F5C1);
       - lvgl.widget.update:
           id: clock_state_surface
           bg_color: !lambda |-
@@ -1746,11 +1925,42 @@ script:
             if (!id(alarm_enabled)) {
               return lv_color_hex(0x003E44);
             }
+            if (id(snooze_active)) {
+              return lv_color_hex(0x001F24);
+            }
             return lv_color_hex(0x000000);
       - lvgl.label.update:
           id: clock_time_label
           text_color: !lambda |-
+            if (!id(alarm_enabled)) {
+              return lv_color_hex(0xF4FFFF);
+            }
+            if (id(snooze_active)) {
+              return lv_color_hex(0x4DD9E4);
+            }
+            if (id(skip_next_ring)) {
+              return lv_color_hex(0xFFD166);
+            }
             return lv_color_hex(0xFFB59C);
+      - lvgl.label.update:
+          id: clock_time_label
+          text: !lambda |-
+            static char time_buf[8];
+            if (id(snooze_active) && id(next_alarm_available)) {
+              auto snooze_until = ESPTime::from_epoch_local(id(next_alarm_epoch));
+              snprintf(time_buf, sizeof(time_buf), "%02d:%02d", snooze_until.hour, snooze_until.minute);
+              return time_buf;
+            }
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid()) {
+              snprintf(time_buf, sizeof(time_buf), "--:--");
+              return time_buf;
+            }
+            snprintf(time_buf, sizeof(time_buf), "%02d:%02d", now.hour, now.minute);
+            return time_buf;
       - lvgl.widget.update:
           id: clock_divider
           bg_color: !lambda |-
@@ -1776,6 +1986,14 @@ script:
             auto now = id(sntp_time).now();
             if (!now.is_valid()) {
               now = id(rtctime).now();
+            }
+            if (id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms)) {
+              snprintf(next_buf, sizeof(next_buf), "Choose morning action");
+              return next_buf;
+            }
+            if (id(snooze_active) && id(next_alarm_available)) {
+              snprintf(next_buf, sizeof(next_buf), "Snoozed until");
+              return next_buf;
             }
             if (!id(alarm_enabled)) {
               snprintf(next_buf, sizeof(next_buf), "Away Mode Active");
@@ -1808,17 +2026,27 @@ script:
       - lvgl.label.update:
           id: clock_countdown_label
           text: !lambda |-
-            static char countdown_buf[24];
+            static char countdown_buf[32];
             auto now = id(sntp_time).now();
             if (!now.is_valid()) {
               now = id(rtctime).now();
             }
             if (!now.is_valid() || !id(alarm_enabled) || id(alarm_ringing) || !id(next_alarm_available) ||
+                (id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms)) ||
                 (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms))) {
               snprintf(countdown_buf, sizeof(countdown_buf), "");
               return countdown_buf;
             }
             const int32_t seconds_until_alarm = int32_t(id(next_alarm_epoch)) - int32_t(now.timestamp);
+            if (id(snooze_active)) {
+              if (seconds_until_alarm <= 0) {
+                snprintf(countdown_buf, sizeof(countdown_buf), "Waking soon");
+                return countdown_buf;
+              }
+              const int minutes_left = (seconds_until_alarm + 59) / 60;
+              snprintf(countdown_buf, sizeof(countdown_buf), "%d min left", minutes_left);
+              return countdown_buf;
+            }
             if (seconds_until_alarm <= 0 || seconds_until_alarm > (8 * 3600)) {
               snprintf(countdown_buf, sizeof(countdown_buf), "");
               return countdown_buf;
@@ -1839,7 +2067,7 @@ script:
                       id(ring_controls_visible) = true;
                       id(home_menu_visible) = false;
                       id(media_screen_visible) = false;
-                  - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, morning_music_button, menu_music_play_button, media_screen_panel]
+                  - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, menu_music_play_button, media_screen_panel]
                   - lvgl.widget.show: [clock_state_surface, ring_title_label, snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
@@ -1853,7 +2081,7 @@ script:
                 condition:
                   lambda: "return id(media_screen_visible);"
                 then:
-                  - lvgl.widget.hide: [clock_state_surface, clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, morning_music_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                  - lvgl.widget.hide: [clock_state_surface, clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
                   - lvgl.widget.show: [media_screen_panel]
                 else:
                   - lvgl.widget.hide: [media_screen_panel]
@@ -1861,7 +2089,7 @@ script:
                       condition:
                         lambda: "return id(home_menu_visible);"
                       then:
-                        - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, morning_music_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                        - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
                         - lvgl.widget.show: [clock_state_surface, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
                       else:
                         - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
@@ -1869,10 +2097,7 @@ script:
                   - if:
                       condition:
                         lambda: |-
-                          return !id(home_menu_visible) && !id(media_screen_visible) && id(alarm_enabled) &&
-                                 !id(alarm_ringing) &&
-                                 (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms) ||
-                                  id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring));
+                          return !id(home_menu_visible) && !id(media_screen_visible) && !id(alarm_ringing);
                       then:
                         - lvgl.widget.show: [clock_status_pill]
                       else:
@@ -1892,9 +2117,9 @@ script:
                           return !id(home_menu_visible) && !id(media_screen_visible) &&
                                  id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
                       then:
-                        - lvgl.widget.show: [morning_music_button]
+                        - lvgl.widget.show: [briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button]
                       else:
-                        - lvgl.widget.hide: [morning_music_button]
+                        - lvgl.widget.hide: [briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button]
 
   - id: apply_snooze_duration
     parameters:
