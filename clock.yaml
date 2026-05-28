@@ -156,6 +156,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: wake_only_touch_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: ring_controls_visible
     type: bool
     restore_value: no
@@ -629,6 +633,18 @@ touchscreen:
               return false;
             }
             id(last_touch_ms) = now_ms;
+            bool night_dim_mode = false;
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (now.is_valid() && (now.hour >= 23 || now.hour < 7)) {
+              night_dim_mode = true;
+            }
+            if (id(screen_dimmed) && night_dim_mode) {
+              id(wake_only_touch_until_ms) = now_ms + 1200;
+              ESP_LOGD("ui", "Night dim tap wakes screen only");
+            }
             return true;
         then:
           - script.execute: reset_idle_timer
@@ -729,7 +745,7 @@ lvgl:
             id: clock_time_label
             width: 220
             align: CENTER
-            y: -40
+            y: -35
             text_align: center
             text_color: 0xFFB59C
             text_font: clock_time_font_82
@@ -802,16 +818,31 @@ lvgl:
               then:
                 - if:
                     condition:
-                      lambda: "return !id(alarm_enabled);"
+                      lambda: |-
+                        if (id(wake_only_touch_until_ms) == 0) {
+                          return false;
+                        }
+                        const bool wake_only = int32_t(millis() - id(wake_only_touch_until_ms)) <= 0;
+                        id(wake_only_touch_until_ms) = 0;
+                        if (wake_only) {
+                          ESP_LOGD("ui", "Resume tap ignored after night dim wake");
+                        }
+                        return wake_only;
                     then:
-                      - script.execute: enable_alarm
+                      - script.execute: reset_idle_timer
                     else:
                       - if:
                           condition:
-                            lambda: "return id(skip_next_ring);"
+                            lambda: "return !id(alarm_enabled);"
                           then:
-                            - script.execute: toggle_skip_next_ring
-                - script.execute: reset_idle_timer
+                            - script.execute: enable_alarm
+                          else:
+                            - if:
+                                condition:
+                                  lambda: "return id(skip_next_ring);"
+                                then:
+                                  - script.execute: toggle_skip_next_ring
+                      - script.execute: reset_idle_timer
             widgets:
               - label:
                   id: clock_resume_label
@@ -834,24 +865,54 @@ lvgl:
               then:
                 - if:
                     condition:
-                      lambda: "return !id(alarm_enabled) && !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
+                      lambda: |-
+                        if (id(wake_only_touch_until_ms) == 0) {
+                          return false;
+                        }
+                        const bool wake_only = int32_t(millis() - id(wake_only_touch_until_ms)) <= 0;
+                        id(wake_only_touch_until_ms) = 0;
+                        if (wake_only) {
+                          ESP_LOGD("ui", "Center tap ignored after night dim wake");
+                        }
+                        return wake_only;
                     then:
-                      - script.execute: enable_alarm
+                      - script.execute: reset_idle_timer
+                    else:
+                      - if:
+                          condition:
+                            lambda: "return !id(alarm_enabled) && !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
+                          then:
+                            - script.execute: enable_alarm
+                          else:
+                            - if:
+                                condition:
+                                  lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
+                                then:
+                                  - script.execute: toggle_skip_next_ring
+                      - script.execute: reset_idle_timer
+            on_long_press:
+              then:
+                - if:
+                    condition:
+                      lambda: |-
+                        if (id(wake_only_touch_until_ms) == 0) {
+                          return false;
+                        }
+                        const bool wake_only = int32_t(millis() - id(wake_only_touch_until_ms)) <= 0;
+                        id(wake_only_touch_until_ms) = 0;
+                        if (wake_only) {
+                          ESP_LOGD("ui", "Long press ignored after night dim wake");
+                        }
+                        return wake_only;
+                    then:
+                      - script.execute: reset_idle_timer
                     else:
                       - if:
                           condition:
                             lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                           then:
-                            - script.execute: toggle_skip_next_ring
-                - script.execute: reset_idle_timer
-            on_long_press:
-              then:
-                - if:
-                    condition:
-                      lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
-                    then:
-                      - script.execute: open_home_menu
-                - script.execute: reset_idle_timer
+                            - script.execute: open_home_menu
+                      - script.execute: reset_idle_timer
         - obj:
             id: home_menu_panel
             hidden: true

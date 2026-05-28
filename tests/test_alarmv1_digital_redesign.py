@@ -37,7 +37,7 @@ def test_v2_design_font_assets_and_labels_are_present():
 
 def test_v2_skip_resume_layout_stays_inside_round_screen():
     text = read_clock()
-    assert "id: clock_time_label\n            width: 220\n            align: CENTER\n            y: -40" in text
+    assert "id: clock_time_label\n            width: 220\n            align: CENTER\n            y: -35" in text
     assert "id: clock_divider\n            width: 142\n            height: 2\n            align: CENTER\n            y: 0" in text
     assert "id: clock_resume_button\n            hidden: true\n            width: 140\n            height: 28" in text
     assert "radius: 14\n            bg_opa: TRANSP" in text
@@ -120,3 +120,26 @@ def test_v2_stop_music_cancels_pending_morning_music_start():
     assert "id(morning_music_start_pending) = true;" in text
     assert "id(morning_music_start_pending) = false;" in text
     assert "lambda: \"return id(morning_music_start_pending);\"" in text
+
+
+def test_v2_night_dim_first_touch_only_wakes_display():
+    text = read_clock()
+    assert "id: wake_only_touch_until_ms" in text
+    touch_block = text.split("touchscreen:", 1)[1].split("light:", 1)[0]
+    assert "id(screen_dimmed) && night_dim_mode" in touch_block
+    assert "now.hour >= 23 || now.hour < 7" in touch_block
+    assert "id(wake_only_touch_until_ms) = now_ms + 1200;" in touch_block
+    assert "Night dim tap wakes screen only" in touch_block
+
+    center_short_block = text.split("id: center_tap_button", 1)[1].split("on_long_press:", 1)[0]
+    assert center_short_block.index("wake_only_touch_until_ms") < center_short_block.index("toggle_skip_next_ring")
+    assert "Center tap ignored after night dim wake" in center_short_block
+
+    center_long_block = text.split("on_long_press:", 1)[1].split("id: home_menu_panel", 1)[0]
+    assert center_long_block.index("wake_only_touch_until_ms") < center_long_block.index("open_home_menu")
+    assert "Long press ignored after night dim wake" in center_long_block
+
+    resume_block = text.split("id: clock_resume_button", 1)[1].split("widgets:", 1)[0]
+    assert resume_block.index("wake_only_touch_until_ms") < resume_block.index("enable_alarm")
+    assert resume_block.index("wake_only_touch_until_ms") < resume_block.index("toggle_skip_next_ring")
+    assert "Resume tap ignored after night dim wake" in resume_block
