@@ -196,6 +196,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: morning_music_start_pending_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: next_ring_override_active
     type: bool
     restore_value: yes
@@ -500,6 +504,12 @@ text_sensor:
     internal: true
     on_value:
       then:
+        - lambda: |-
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing" && id(morning_music_start_pending)) {
+              id(morning_music_start_pending) = false;
+              id(morning_music_start_pending_until_ms) = 0;
+              ESP_LOGI("media", "Morning music playback detected; clearing start pending state");
+            }
         - script.execute: update_media_screen_ui
   - platform: homeassistant
     id: media_track_title
@@ -990,12 +1000,21 @@ lvgl:
                 - if:
                     condition:
                       lambda: |-
-                        return id(media_player_state).has_state() && id(media_player_state).state == "playing";
+                        return id(morning_music_start_pending) ||
+                               (id(media_player_state).has_state() && id(media_player_state).state == "playing");
                     then:
                       - script.execute: open_media_screen
                     else:
-                      - script.execute: open_media_screen
-                      - script.execute: play_morning_music_on_ha
+                      - if:
+                          condition:
+                            lambda: |-
+                              return id(media_player_state).has_state() && id(media_player_state).state == "paused";
+                          then:
+                            - script.execute: open_media_screen
+                            - script.execute: media_play_on_ha
+                          else:
+                            - script.execute: open_media_screen
+                            - script.execute: play_morning_music_on_ha
                 - script.execute: reset_idle_timer
             widgets:
               - label:
@@ -1071,7 +1090,7 @@ lvgl:
             text_align: center
             text_color: 0xC5CDCD
             text_font: clock_label_font_12
-            text: "Rotate = snooze time"
+            text: "Turn knob for snooze"
         - button:
             id: stop_button
             hidden: true
@@ -1240,25 +1259,35 @@ lvgl:
                   arc_width: 8
                   arc_color: 0xFFB59C
               - label:
-                  id: media_title_label
-                  width: 202
+                  id: media_status_label
+                  width: 160
                   align: CENTER
-                  y: -70
+                  y: -102
+                  text_align: center
+                  text_color: 0x4DD9E4
+                  text_font: clock_label_font_12
+                  long_mode: dot
+                  text: "READY"
+              - label:
+                  id: media_title_label
+                  width: 210
+                  align: CENTER
+                  y: -76
                   text_align: center
                   text_color: 0xF4F4F4
                   text_font: media_text_font_18
                   long_mode: dot
-                  text: "No track"
+                  text: "Ready to play"
               - label:
                   id: media_artist_label
                   width: 204
                   align: CENTER
-                  y: -40
+                  y: -46
                   text_align: center
                   text_color: 0x8E9696
                   text_font: media_text_font_14
                   long_mode: dot
-                  text: ""
+                  text: "Turn knob for volume"
               - button:
                   id: media_stop_button
                   width: 54
@@ -1354,6 +1383,17 @@ interval:
 
   - interval: 1s
     then:
+      - if:
+          condition:
+            lambda: |-
+              return id(morning_music_start_pending) && id(morning_music_start_pending_until_ms) != 0 &&
+                     int32_t(millis() - id(morning_music_start_pending_until_ms)) >= 0;
+          then:
+            - lambda: |-
+                id(morning_music_start_pending) = false;
+                id(morning_music_start_pending_until_ms) = 0;
+                ESP_LOGW("media", "Morning music start pending state timed out");
+            - script.execute: update_media_screen_ui
       - lambda: |-
           auto now = id(sntp_time).now();
           if (!now.is_valid()) {
@@ -1773,6 +1813,7 @@ script:
     then:
       - lambda: |-
           id(morning_music_start_pending) = true;
+          id(morning_music_start_pending_until_ms) = millis() + 30000;
           ESP_LOGI("alarm", "Requesting Home Assistant morning music on %s", "${morning_briefing_player_entity}");
       - homeassistant.action:
           action: ${morning_briefing_action}
@@ -1785,6 +1826,7 @@ script:
           on_error:
             - lambda: |-
                 id(morning_music_start_pending) = false;
+                id(morning_music_start_pending_until_ms) = 0;
                 ESP_LOGW("alarm", "Home Assistant morning music failed: %s", error.c_str());
       - homeassistant.action:
           action: media_player.media_play
@@ -1811,6 +1853,7 @@ script:
       - script.stop: play_morning_music_on_ha
       - lambda: |-
           id(morning_music_start_pending) = false;
+          id(morning_music_start_pending_until_ms) = 0;
           ESP_LOGI("alarm", "Requesting Home Assistant morning music stop for %s", "${morning_briefing_player_entity}");
       - homeassistant.action:
           action: script.turn_off
@@ -1848,6 +1891,18 @@ script:
           ESP_LOGI("media", "Media screen closed");
       - script.execute: update_alarm_status_ui
       - script.execute: reset_idle_timer
+
+  - id: media_play_on_ha
+    then:
+      - lambda: |-
+          ESP_LOGI("media", "Requesting media play for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: media_player.media_play
+          data:
+            entity_id: ${morning_briefing_player_entity}
+          on_error:
+            - lambda: |-
+                ESP_LOGW("media", "Media play failed: %s", error.c_str());
 
   - id: media_play_pause_on_ha
     then:
@@ -1902,10 +1957,29 @@ script:
       - lvgl.label.update:
           id: menu_music_play_label
           text: !lambda |-
+            if (id(morning_music_start_pending)) {
+              return "Starting...";
+            }
             if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
               return "Open Music";
             }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "paused") {
+              return "Resume Music";
+            }
             return "Start Music";
+      - lvgl.label.update:
+          id: media_status_label
+          text: !lambda |-
+            if (id(morning_music_start_pending)) {
+              return "STARTING";
+            }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+              return "NOW PLAYING";
+            }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "paused") {
+              return "PAUSED";
+            }
+            return "READY";
       - lvgl.label.update:
           id: media_play_pause_icon_label
           text: !lambda |-
@@ -1916,26 +1990,41 @@ script:
       - lvgl.label.update:
           id: media_title_label
           text: !lambda |-
+            if (id(morning_music_start_pending)) {
+              return "Starting music";
+            }
             if (id(media_track_title).has_state() && !id(media_track_title).state.empty()) {
               return id(media_track_title).state.c_str();
             }
             if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
               return "Playing";
             }
-            return "No track";
+            if (id(media_player_state).has_state() && id(media_player_state).state == "paused") {
+              return "Paused";
+            }
+            return "Ready to play";
       - lvgl.label.update:
           id: media_artist_label
           text: !lambda |-
+            if (id(morning_music_start_pending)) {
+              return "Tap stop to cancel";
+            }
             if (id(media_track_artist).has_state() && !id(media_track_artist).state.empty()) {
               return id(media_track_artist).state.c_str();
             }
             if (id(media_track_album).has_state() && !id(media_track_album).state.empty()) {
               return id(media_track_album).state.c_str();
             }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "paused") {
+              return "Tap play to resume";
+            }
+            if (id(media_player_state).has_state() && id(media_player_state).state == "idle") {
+              return "Turn knob for volume";
+            }
             if (id(media_player_state).has_state()) {
               return id(media_player_state).state.c_str();
             }
-            return "Rotate = volume";
+            return "Turn knob for volume";
 
   - id: reset_idle_timer
     mode: restart

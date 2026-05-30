@@ -31,6 +31,8 @@ def test_v2_design_font_assets_and_labels_are_present():
     assert "SKIPPED" in text
     assert "Start Music" in text
     assert "Open Music" in text
+    assert "Resume Music" in text
+    assert "Starting..." in text
     assert "Start music" not in text
     assert "Open music" not in text
 
@@ -62,6 +64,13 @@ def test_v2_omits_bottom_nav_and_album_art_runtime_paths():
 def test_v2_media_screen_uses_large_touch_targets_without_album_art():
     text = read_clock()
     assert "id: media_text_font_18" in text
+    assert "id: media_status_label" in text
+    assert "text: \"READY\"" in text
+    assert "return \"NOW PLAYING\";" in text
+    assert "return \"STARTING\";" in text
+    assert "return \"Starting music\";" in text
+    assert "return \"Tap stop to cancel\";" in text
+    assert "return \"Ready to play\";" in text
     assert "id: media_play_pause_button\n                  width: 68\n                  height: 68" in text
     assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        x: 2\n                        y: 1" in text
     assert "id: media_stop_button\n                  width: 54\n                  height: 54" in text
@@ -88,6 +97,8 @@ def test_v2_snooze_screen_shows_until_time_and_countdown():
     assert "snprintf(next_buf, sizeof(next_buf), \"Snoozed until\");" in text
     assert "auto snooze_until = ESPTime::from_epoch_local(id(next_alarm_epoch));" in text
     assert "snprintf(countdown_buf, sizeof(countdown_buf), \"%d min left\", minutes_left);" in text
+    assert "Turn knob for snooze" in text
+    assert "Rotate = snooze time" not in text
 
 
 def test_v2_post_dismiss_briefing_choices_replace_auto_immediate_start():
@@ -120,12 +131,26 @@ def test_v2_rotary_does_not_create_override_while_next_ring_is_skipped():
         assert "return;" in skip_guard
 
 
+def test_v2_home_music_button_is_state_aware():
+    text = read_clock()
+    button_block = text.split("id: menu_music_play_button", 1)[1].split("widgets:", 1)[0]
+    assert "id(morning_music_start_pending)" in button_block
+    assert "id(media_player_state).state == \"playing\"" in button_block
+    assert "id(media_player_state).state == \"paused\"" in button_block
+    assert "script.execute: media_play_on_ha" in button_block
+    assert "script.execute: play_morning_music_on_ha" in button_block
+
+
 def test_v2_stop_music_cancels_pending_morning_music_start():
     text = read_clock()
     assert "script.stop: play_morning_music_on_ha" in text
     assert "action: script.turn_off\n          data:\n            entity_id: ${morning_briefing_action}" in text
     assert "id(morning_music_start_pending) = true;" in text
+    assert "id(morning_music_start_pending_until_ms) = millis() + 30000;" in text
     assert "id(morning_music_start_pending) = false;" in text
+    assert "id(morning_music_start_pending_until_ms) = 0;" in text
+    assert "Morning music playback detected; clearing start pending state" in text
+    assert "Morning music start pending state timed out" in text
     assert "lambda: \"return id(morning_music_start_pending);\"" in text
 
 
