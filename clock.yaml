@@ -1097,104 +1097,120 @@ lvgl:
                   text_color: 0xFFB4AB
                   text_font: clock_body_font_20
                   text: "STOP"
-        - label:
-            id: briefing_prompt_label
+        - obj:
+            id: briefing_prompt_panel
             hidden: true
-            width: 196
+            width: 210
+            height: 210
             align: CENTER
-            y: 34
-            text_align: center
-            text_color: 0xF4FFFF
-            text_font: clock_label_font_12
-            text: "Briefing in 15s"
-        - button:
-            id: briefing_start_button
-            hidden: true
-            width: 92
-            height: 30
-            align: CENTER
-            x: -52
-            y: 62
-            radius: 15
-            bg_color: 0xB8F5C1
+            bg_color: 0x080A12
             bg_opa: COVER
-            text_color: Black
-            border_width: 0
-            shadow_width: 0
-            pad_all: 0
-            on_click:
-              then:
-                - lambda: |-
-                    id(morning_music_prompt_until_ms) = 0;
-                    id(morning_briefing_auto_start_ms) = 0;
-                - script.execute: play_morning_briefing_on_ha
-                - script.execute: update_alarm_status_ui
-                - script.execute: reset_idle_timer
-            widgets:
-              - label:
-                  align: CENTER
-                  text_align: center
-                  text_color: Black
-                  text_font: clock_label_font_12
-                  text: "Briefing"
-        - button:
-            id: briefing_music_button
-            hidden: true
-            width: 110
-            height: 30
-            align: CENTER
-            x: 48
-            y: 62
-            radius: 15
-            bg_color: 0xFFB59C
-            bg_opa: COVER
-            text_color: Black
-            border_width: 0
-            shadow_width: 0
-            pad_all: 0
-            on_click:
-              then:
-                - lambda: |-
-                    id(morning_music_prompt_until_ms) = 0;
-                    id(morning_briefing_auto_start_ms) = 0;
-                - script.execute: play_morning_briefing_with_music_on_ha
-                - script.execute: update_alarm_status_ui
-                - script.execute: reset_idle_timer
-            widgets:
-              - label:
-                  align: CENTER
-                  text_align: center
-                  text_color: Black
-                  text_font: clock_label_font_12
-                  text: "Brief+Music"
-        - button:
-            id: briefing_dismiss_button
-            hidden: true
-            width: 96
-            height: 28
-            align: CENTER
-            y: 92
-            radius: 14
-            bg_opa: TRANSP
-            text_color: 0xF4FFFF
+            radius: 105
+            clip_corner: false
             border_width: 1
-            border_color: 0x8DECF2
-            shadow_width: 0
+            border_color: 0x4B2E63
             pad_all: 0
-            on_click:
-              then:
-                - lambda: |-
-                    id(morning_music_prompt_until_ms) = 0;
-                    id(morning_briefing_auto_start_ms) = 0;
-                - script.execute: update_alarm_status_ui
-                - script.execute: reset_idle_timer
             widgets:
               - label:
-                  align: CENTER
+                  width: 180
+                  align: TOP_MID
+                  y: 17
                   text_align: center
-                  text_color: 0xF4FFFF
+                  text_color: 0xF5D9FF
+                  text_font: clock_body_font_20
+                  text: "Morning"
+              - label:
+                  id: briefing_prompt_label
+                  width: 180
+                  align: TOP_MID
+                  y: 44
+                  text_align: center
+                  text_color: 0xC5CDCD
                   text_font: clock_label_font_12
-                  text: "Dismiss"
+                  text: "Briefing in 15s"
+              - button:
+                  id: briefing_start_button
+                  width: 168
+                  height: 42
+                  align: TOP_MID
+                  y: 66
+                  radius: 21
+                  bg_color: 0xB8F5C1
+                  bg_opa: COVER
+                  text_color: Black
+                  border_width: 0
+                  shadow_width: 0
+                  pad_all: 0
+                  on_click:
+                    then:
+                      - lambda: |-
+                          id(morning_music_prompt_until_ms) = 0;
+                          id(morning_briefing_auto_start_ms) = 0;
+                      - script.execute: play_morning_briefing_on_ha
+                      - script.execute: update_alarm_status_ui
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_align: center
+                        text_color: Black
+                        text_font: clock_body_font_18
+                        text: "Briefing"
+              - button:
+                  id: briefing_music_button
+                  width: 168
+                  height: 42
+                  align: TOP_MID
+                  y: 114
+                  radius: 21
+                  bg_color: 0xFFB59C
+                  bg_opa: COVER
+                  text_color: Black
+                  border_width: 0
+                  shadow_width: 0
+                  pad_all: 0
+                  on_click:
+                    then:
+                      - lambda: |-
+                          id(morning_music_prompt_until_ms) = 0;
+                          id(morning_briefing_auto_start_ms) = 0;
+                      - script.execute: play_morning_briefing_with_music_on_ha
+                      - script.execute: update_alarm_status_ui
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_align: center
+                        text_color: Black
+                        text_font: clock_body_font_18
+                        text: "Brief+Music"
+              - button:
+                  id: briefing_dismiss_button
+                  width: 128
+                  height: 34
+                  align: TOP_MID
+                  y: 162
+                  radius: 17
+                  bg_opa: TRANSP
+                  text_color: 0xF4FFFF
+                  border_width: 1
+                  border_color: 0x8DECF2
+                  shadow_width: 0
+                  pad_all: 0
+                  on_click:
+                    then:
+                      - lambda: |-
+                          id(morning_music_prompt_until_ms) = 0;
+                          id(morning_briefing_auto_start_ms) = 0;
+                      - script.execute: update_alarm_status_ui
+                      - script.execute: reset_idle_timer
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_align: center
+                        text_color: 0xF4FFFF
+                        text_font: clock_body_font_16
+                        text: "Dismiss"
         - obj:
             id: media_screen_panel
             hidden: true
@@ -2165,7 +2181,7 @@ script:
                       id(ring_controls_visible) = true;
                       id(home_menu_visible) = false;
                       id(media_screen_visible) = false;
-                  - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, menu_music_play_button, media_screen_panel]
+                  - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, briefing_prompt_panel, menu_music_play_button, media_screen_panel]
                   - lvgl.widget.show: [clock_state_surface, ring_title_label, snooze_button, stop_button, snooze_hint_label]
           else:
             - if:
@@ -2179,7 +2195,7 @@ script:
                 condition:
                   lambda: "return id(media_screen_visible);"
                 then:
-                  - lvgl.widget.hide: [clock_state_surface, clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                  - lvgl.widget.hide: [clock_state_surface, clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, briefing_prompt_panel, ring_title_label, snooze_button, stop_button, snooze_hint_label]
                   - lvgl.widget.show: [media_screen_panel]
                 else:
                   - lvgl.widget.hide: [media_screen_panel]
@@ -2187,7 +2203,7 @@ script:
                       condition:
                         lambda: "return id(home_menu_visible);"
                       then:
-                        - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                        - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, briefing_prompt_panel, ring_title_label, snooze_button, stop_button, snooze_hint_label]
                         - lvgl.widget.show: [clock_state_surface, home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button]
                       else:
                         - lvgl.widget.hide: [home_menu_panel, all_lights_off_button, menu_music_play_button, close_menu_button, ring_title_label, snooze_button, stop_button, snooze_hint_label]
@@ -2215,9 +2231,9 @@ script:
                           return !id(home_menu_visible) && !id(media_screen_visible) &&
                                  id(morning_music_prompt_until_ms) != 0 && millis() < id(morning_music_prompt_until_ms);
                       then:
-                        - lvgl.widget.show: [briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button]
+                        - lvgl.widget.show: [briefing_prompt_panel]
                       else:
-                        - lvgl.widget.hide: [briefing_prompt_label, briefing_start_button, briefing_music_button, briefing_dismiss_button]
+                        - lvgl.widget.hide: [briefing_prompt_panel]
 
   - id: apply_snooze_duration
     parameters:

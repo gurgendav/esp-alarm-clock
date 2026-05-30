@@ -92,13 +92,20 @@ def test_v2_snooze_screen_shows_until_time_and_countdown():
 
 def test_v2_post_dismiss_briefing_choices_replace_auto_immediate_start():
     text = read_clock()
+    assert "id: briefing_prompt_panel\n            hidden: true\n            width: 210\n            height: 210" in text
     assert "id: briefing_prompt_label" in text
+    assert "text: \"Morning\"" in text
     assert "text: \"Briefing\"" in text
     assert "text: \"Brief+Music\"" in text
     assert "text: \"Dismiss\"" in text
+    assert "id: briefing_start_button\n                  width: 168\n                  height: 42" in text
+    assert "id: briefing_music_button\n                  width: 168\n                  height: 42" in text
+    assert "id: briefing_dismiss_button\n                  width: 128\n                  height: 34" in text
     assert "id(morning_briefing_auto_start_ms) = now_ms + 15000;" in text
     assert "snprintf(briefing_buf, sizeof(briefing_buf), \"Briefing in %us\"" in text
     assert "id: play_morning_briefing_with_music_on_ha" in text
+    assert "lvgl.widget.show: [briefing_prompt_panel]" in text
+    assert "lvgl.widget.show: [briefing_prompt_label, briefing_start_button" not in text
     dismiss_block = text.split("  - id: dismiss_alarm", 1)[1].split("\n\n  - id:", 1)[0]
     assert "play_morning_briefing_on_ha" not in dismiss_block
 
