@@ -65,6 +65,7 @@ def test_v2_media_screen_uses_large_touch_targets_without_album_art():
     text = read_clock()
     assert "id: media_text_font_18" in text
     assert "id: media_status_label" in text
+    assert "id: media_sleep_label" in text
     assert "text: \"READY\"" in text
     assert "return \"NOW PLAYING\";" in text
     assert "return \"STARTING\";" in text
@@ -78,6 +79,38 @@ def test_v2_media_screen_uses_large_touch_targets_without_album_art():
     assert "arc_width: 8" in text
 
 
+def test_v2_media_progress_and_volume_share_colored_arc():
+    text = read_clock()
+    assert "id: media_track_position" in text
+    assert "attribute: media_position" in text
+    assert "id: media_track_duration" in text
+    assert "attribute: media_duration" in text
+    assert "id(media_volume_overlay_until_ms)" in text
+    assert "return lv_color_hex(0xFFB59C);" in text  # volume color
+    assert "return lv_color_hex(0x4DD9E4);" in text  # progress color
+    assert "return lv_color_hex(0x243030);" in text  # inactive arc
+    assert "id(media_position_updated_ms) = millis();" in text
+
+
+def test_v2_media_sleep_timer_and_next_double_tap():
+    text = read_clock()
+    assert "id: cycle_media_sleep_timer" in text
+    assert "Media sleep timer set for %d minutes" in text
+    assert "Sleep timer %dm" in text
+    assert "Media sleep timer expired; stopping music" in text
+    assert "id: handle_media_next_button_click" in text
+    assert "id: media_next_single_tap_delay" in text
+    assert "Double tap Next: skipping morning music playlist" in text
+    assert "skip_playlist: \"true\"" in text
+
+
+def test_v2_front_button_controls_media_screen():
+    text = read_clock()
+    front_button_block = text.split("id: front_button", 1)[1].split("spi:", 1)[0]
+    assert "return id(media_screen_visible);" in front_button_block
+    assert "script.execute: media_play_pause_on_ha" in front_button_block
+    assert "script.execute: stop_morning_music_on_ha" in front_button_block
+    assert "script.execute: close_media_screen" in front_button_block
 def test_v2_away_and_alarm_state_pill_colors_are_distinct():
     text = read_clock()
     assert "return \"AWAY\";" in text

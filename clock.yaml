@@ -180,6 +180,26 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: media_position_updated_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: media_sleep_timer_until_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: media_sleep_timer_minutes
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: media_next_click_pending
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: media_next_click_deadline_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: dismiss_feedback_until_ms
     type: uint32_t
     restore_value: no
@@ -452,6 +472,26 @@ sensor:
               id(media_volume_level) = x;
             }
         - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_position
+    entity_id: ${morning_briefing_player_entity}
+    attribute: media_position
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            if (!isnan(x)) {
+              id(media_position_updated_ms) = millis();
+            }
+        - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: media_track_duration
+    entity_id: ${morning_briefing_player_entity}
+    attribute: media_duration
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_media_screen_ui
 
 time:
   - platform: pcf8563
@@ -592,12 +632,19 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: "return id(alarm_ringing) || id(snooze_active);"
+                lambda: "return id(media_screen_visible);"
               then:
-                - script.execute: dismiss_alarm
+                - script.execute: close_media_screen
+                - script.execute: stop_morning_music_on_ha
               else:
-                - script.execute: home_all_lights_off
-                - script.execute: close_home_menu
+                - if:
+                    condition:
+                      lambda: "return id(alarm_ringing) || id(snooze_active);"
+                    then:
+                      - script.execute: dismiss_alarm
+                    else:
+                      - script.execute: home_all_lights_off
+                      - script.execute: close_home_menu
           - script.execute: reset_idle_timer
       - timing:
           - ON for at most 500ms
@@ -605,21 +652,27 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: "return id(alarm_ringing);"
+                lambda: "return id(media_screen_visible);"
               then:
-                - script.execute: snooze_alarm_five_minutes
+                - script.execute: media_play_pause_on_ha
               else:
                 - if:
                     condition:
-                      lambda: "return !id(media_screen_visible);"
+                      lambda: "return id(alarm_ringing);"
                     then:
+                      - script.execute: snooze_alarm_five_minutes
+                    else:
                       - if:
                           condition:
-                            lambda: "return id(home_menu_visible);"
+                            lambda: "return !id(media_screen_visible);"
                           then:
-                            - script.execute: close_home_menu
-                          else:
-                            - script.execute: open_home_menu
+                            - if:
+                                condition:
+                                  lambda: "return id(home_menu_visible);"
+                                then:
+                                  - script.execute: close_home_menu
+                                else:
+                                  - script.execute: open_home_menu
           - script.execute: reset_idle_timer
 
 spi:
@@ -1245,7 +1298,6 @@ lvgl:
             widgets:
               - arc:
                   id: media_volume_arc
-                  hidden: true
                   width: 232
                   height: 232
                   align: CENTER
@@ -1288,6 +1340,16 @@ lvgl:
                   text_font: media_text_font_14
                   long_mode: dot
                   text: "Turn knob for volume"
+              - label:
+                  id: media_sleep_label
+                  width: 188
+                  align: CENTER
+                  y: -20
+                  text_align: center
+                  text_color: 0xFFD166
+                  text_font: clock_label_font_12
+                  long_mode: dot
+                  text: ""
               - button:
                   id: media_stop_button
                   width: 54
@@ -1306,6 +1368,10 @@ lvgl:
                       - script.execute: close_media_screen
                       - script.execute: reset_idle_timer
                       - script.execute: stop_morning_music_on_ha
+                  on_long_press:
+                    then:
+                      - script.execute: cycle_media_sleep_timer
+                      - script.execute: reset_idle_timer
                   widgets:
                     - label:
                         width: 100%
@@ -1357,7 +1423,7 @@ lvgl:
                   shadow_width: 0
                   on_click:
                     then:
-                      - script.execute: media_next_track_on_ha
+                      - script.execute: handle_media_next_button_click
                       - script.execute: reset_idle_timer
                   widgets:
                     - label:
@@ -1379,10 +1445,27 @@ interval:
           then:
             - lambda: |-
                 id(media_volume_overlay_until_ms) = 0;
-            - lvgl.widget.hide: media_volume_arc
+            - script.execute: update_media_screen_ui
 
   - interval: 1s
     then:
+      - if:
+          condition:
+            lambda: |-
+              return id(media_sleep_timer_until_ms) != 0 && int32_t(millis() - id(media_sleep_timer_until_ms)) >= 0;
+          then:
+            - lambda: |-
+                id(media_sleep_timer_until_ms) = 0;
+                id(media_sleep_timer_minutes) = 0;
+                ESP_LOGI("media", "Media sleep timer expired; stopping music");
+            - script.execute: close_media_screen
+            - script.execute: stop_morning_music_on_ha
+            - script.execute: update_media_screen_ui
+      - if:
+          condition:
+            lambda: "return id(media_screen_visible);"
+          then:
+            - script.execute: update_media_screen_ui
       - if:
           condition:
             lambda: |-
@@ -1928,6 +2011,78 @@ script:
             - lambda: |-
                 ESP_LOGW("media", "Media next track failed: %s", error.c_str());
 
+  - id: media_skip_playlist_on_ha
+    then:
+      - lambda: |-
+          id(morning_music_start_pending) = true;
+          id(morning_music_start_pending_until_ms) = millis() + 30000;
+          ESP_LOGI("media", "Requesting next morning music playlist for %s", "${morning_briefing_player_entity}");
+      - homeassistant.action:
+          action: ${morning_briefing_action}
+          data:
+            media_player_entity_id: ${morning_briefing_player_entity}
+            music_only: "true"
+            skip_playlist: "true"
+          on_error:
+            - lambda: |-
+                id(morning_music_start_pending) = false;
+                id(morning_music_start_pending_until_ms) = 0;
+                ESP_LOGW("media", "Media playlist skip failed: %s", error.c_str());
+
+  - id: media_next_single_tap_delay
+    mode: restart
+    then:
+      - delay: 450ms
+      - if:
+          condition:
+            lambda: |-
+              return id(media_next_click_pending) && int32_t(millis() - id(media_next_click_deadline_ms)) >= 0;
+          then:
+            - lambda: |-
+                id(media_next_click_pending) = false;
+                id(media_next_click_deadline_ms) = 0;
+            - script.execute: media_next_track_on_ha
+
+  - id: handle_media_next_button_click
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(media_next_click_pending) && int32_t(millis() - id(media_next_click_deadline_ms)) < 0;
+          then:
+            - script.stop: media_next_single_tap_delay
+            - lambda: |-
+                id(media_next_click_pending) = false;
+                id(media_next_click_deadline_ms) = 0;
+                ESP_LOGI("media", "Double tap Next: skipping morning music playlist");
+            - script.execute: media_skip_playlist_on_ha
+          else:
+            - lambda: |-
+                id(media_next_click_pending) = true;
+                id(media_next_click_deadline_ms) = millis() + 450;
+            - script.execute: media_next_single_tap_delay
+
+  - id: cycle_media_sleep_timer
+    then:
+      - lambda: |-
+          if (id(media_sleep_timer_minutes) == 0) {
+            id(media_sleep_timer_minutes) = 15;
+          } else if (id(media_sleep_timer_minutes) == 15) {
+            id(media_sleep_timer_minutes) = 30;
+          } else if (id(media_sleep_timer_minutes) == 30) {
+            id(media_sleep_timer_minutes) = 60;
+          } else {
+            id(media_sleep_timer_minutes) = 0;
+          }
+          if (id(media_sleep_timer_minutes) == 0) {
+            id(media_sleep_timer_until_ms) = 0;
+            ESP_LOGI("media", "Media sleep timer cancelled");
+          } else {
+            id(media_sleep_timer_until_ms) = millis() + (uint32_t(id(media_sleep_timer_minutes)) * 60U * 1000U);
+            ESP_LOGI("media", "Media sleep timer set for %d minutes", id(media_sleep_timer_minutes));
+          }
+      - script.execute: update_media_screen_ui
+
   - id: set_morning_music_volume_on_ha
     mode: restart
     then:
@@ -1953,7 +2108,32 @@ script:
       - lvgl.arc.update:
           id: media_volume_arc
           value: !lambda |-
-            return int(id(media_volume_level) * 100.0f + 0.5f);
+            if (id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0) {
+              return int(id(media_volume_level) * 100.0f + 0.5f);
+            }
+            if (id(media_track_duration).has_state() && id(media_track_position).has_state() &&
+                !isnan(id(media_track_duration).state) && !isnan(id(media_track_position).state) &&
+                id(media_track_duration).state > 0.0f) {
+              float position = id(media_track_position).state;
+              if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
+                position += float(millis() - id(media_position_updated_ms)) / 1000.0f;
+              }
+              if (position < 0.0f) position = 0.0f;
+              if (position > id(media_track_duration).state) position = id(media_track_duration).state;
+              return int((position / id(media_track_duration).state) * 100.0f + 0.5f);
+            }
+            return 0;
+          arc_color: !lambda |-
+            if (id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0) {
+              return lv_color_hex(0xFFB59C);
+            }
+            if (id(media_track_duration).has_state() && id(media_track_position).has_state() &&
+                !isnan(id(media_track_duration).state) && !isnan(id(media_track_position).state) &&
+                id(media_track_duration).state > 0.0f) {
+              return lv_color_hex(0x4DD9E4);
+            }
+            return lv_color_hex(0x243030);
+      - lvgl.widget.show: media_volume_arc
       - lvgl.label.update:
           id: menu_music_play_label
           text: !lambda |-
@@ -2025,6 +2205,22 @@ script:
               return id(media_player_state).state.c_str();
             }
             return "Turn knob for volume";
+      - lvgl.label.update:
+          id: media_sleep_label
+          text: !lambda |-
+            static char sleep_buf[32];
+            if (id(media_sleep_timer_until_ms) == 0 || id(media_sleep_timer_minutes) == 0) {
+              snprintf(sleep_buf, sizeof(sleep_buf), "");
+              return sleep_buf;
+            }
+            const int32_t remaining_ms = int32_t(id(media_sleep_timer_until_ms) - millis());
+            if (remaining_ms <= 0) {
+              snprintf(sleep_buf, sizeof(sleep_buf), "Stopping soon");
+              return sleep_buf;
+            }
+            const int remaining_minutes = (remaining_ms + 59999) / 60000;
+            snprintf(sleep_buf, sizeof(sleep_buf), "Sleep timer %dm", remaining_minutes);
+            return sleep_buf;
 
   - id: reset_idle_timer
     mode: restart
