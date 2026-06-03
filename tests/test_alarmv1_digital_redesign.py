@@ -168,6 +168,24 @@ def test_v2_rotary_does_not_create_override_while_next_ring_is_skipped():
         assert "return;" in skip_guard
 
 
+def test_v2_rotary_starts_quick_override_when_regular_alarm_is_far_away():
+    text = read_clock()
+    assert "smart_quick_override_threshold_minutes" in text
+    assert "smart_quick_override_start_minutes" in text
+    assert "const uint32_t smart_quick_override_threshold_minutes = 180;" in text
+    assert "const uint32_t smart_quick_override_start_minutes = 30;" in text
+    assert text.count("Smart quick override started at +%u minutes") == 2
+
+    clockwise_block = text.split("on_clockwise:", 1)[1].split("on_anticlockwise:", 1)[0]
+    anticlockwise_block = text.split("on_anticlockwise:", 1)[1].split("time:", 1)[0]
+    for block in (clockwise_block, anticlockwise_block):
+        assert "!id(next_ring_override_active)" in block
+        assert "minutes_until_next_alarm > smart_quick_override_threshold_minutes" in block
+        smart_start = block.index("now.timestamp + (smart_quick_override_start_minutes * 60)")
+        normal_adjust = block.index("Next ring override adjusted")
+        assert smart_start < normal_adjust
+
+
 def test_v2_home_music_button_is_state_aware():
     text = read_clock()
     button_block = text.split("id: menu_music_play_button", 1)[1].split("widgets:", 1)[0]
