@@ -148,6 +148,10 @@ def test_v2_post_dismiss_briefing_choices_replace_auto_immediate_start():
     assert "id(morning_briefing_auto_start_ms) = now_ms + 15000;" in text
     assert "snprintf(briefing_buf, sizeof(briefing_buf), \"Briefing in %us\"" in text
     assert "id: play_morning_briefing_with_music_on_ha" in text
+    music_button_block = text.split("id: briefing_music_button", 1)[1].split("widgets:", 1)[0]
+    assert "script.execute: open_media_screen" in music_button_block
+    assert music_button_block.index("open_media_screen") < music_button_block.index("play_morning_briefing_with_music_on_ha")
+    assert "id(morning_music_start_pending_until_ms) = millis() + 180000;" in text
     assert "lvgl.widget.show: [briefing_prompt_panel]" in text
     assert "lvgl.widget.show: [briefing_prompt_label, briefing_start_button" not in text
     dismiss_block = text.split("  - id: dismiss_alarm", 1)[1].split("\n\n  - id:", 1)[0]

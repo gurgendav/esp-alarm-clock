@@ -1246,6 +1246,7 @@ lvgl:
                       - lambda: |-
                           id(morning_music_prompt_until_ms) = 0;
                           id(morning_briefing_auto_start_ms) = 0;
+                      - script.execute: open_media_screen
                       - script.execute: play_morning_briefing_with_music_on_ha
                       - script.execute: update_alarm_status_ui
                       - script.execute: reset_idle_timer
@@ -1878,6 +1879,8 @@ script:
   - id: play_morning_briefing_with_music_on_ha
     then:
       - lambda: |-
+          id(morning_music_start_pending) = true;
+          id(morning_music_start_pending_until_ms) = millis() + 180000;
           ESP_LOGI("alarm", "Requesting Home Assistant morning briefing with music on %s", "${morning_briefing_player_entity}");
       - homeassistant.action:
           action: ${morning_briefing_action}
@@ -1889,6 +1892,8 @@ script:
                 ESP_LOGI("alarm", "Requested Home Assistant morning briefing with music");
           on_error:
             - lambda: |-
+                id(morning_music_start_pending) = false;
+                id(morning_music_start_pending_until_ms) = 0;
                 ESP_LOGW("alarm", "Home Assistant morning briefing with music failed: %s", error.c_str());
 
   - id: play_morning_music_on_ha
