@@ -362,24 +362,6 @@ sensor:
             ESP_LOGW("alarm", "Ignoring clockwise encoder turn because next ring is unavailable");
             return;
           }
-          const uint32_t smart_quick_override_threshold_minutes = 180;
-          const uint32_t smart_quick_override_start_minutes = 30;
-          const uint32_t now_epoch = uint32_t(now.timestamp);
-          if (!id(next_ring_override_active)) {
-            const uint32_t minutes_until_next_alarm = id(next_alarm_epoch) > now_epoch
-              ? uint32_t((id(next_alarm_epoch) - now_epoch + 59) / 60)
-              : 0;
-            if (minutes_until_next_alarm > smart_quick_override_threshold_minutes) {
-              uint32_t candidate_epoch = uint32_t(now.timestamp + (smart_quick_override_start_minutes * 60));
-              candidate_epoch = (candidate_epoch / 60) * 60;
-              id(next_ring_override_active) = true;
-              id(next_ring_override_epoch) = candidate_epoch;
-              id(update_minutes_hand).execute();
-              auto next_alarm = ESPTime::from_epoch_local(candidate_epoch);
-              ESP_LOGI("alarm", "Smart quick override started at +%u minutes to %02d:%02d", smart_quick_override_start_minutes, next_alarm.hour, next_alarm.minute);
-              return;
-            }
-          }
           uint32_t candidate_epoch = id(next_alarm_epoch) + (step_minutes * 60);
           const uint32_t min_epoch = ((uint32_t(now.timestamp) / 60) + 1) * 60;
           if (candidate_epoch < min_epoch) {
