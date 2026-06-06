@@ -190,6 +190,14 @@ def test_v2_anticlockwise_rotary_starts_quick_override_when_regular_alarm_is_far
     assert smart_start < normal_adjust
 
 
+def test_v2_exposes_alarm_ringing_state_to_home_assistant():
+    text = read_clock()
+    assert "id: alarm_ringing_sensor" in text
+    assert "name: \"Alarm Ringing\"" in text
+    assert "icon: \"mdi:alarm-light\"" in text
+    assert "return id(alarm_ringing);" in text
+
+
 def test_v2_home_music_button_is_state_aware():
     text = read_clock()
     button_block = text.split("id: menu_music_play_button", 1)[1].split("widgets:", 1)[0]

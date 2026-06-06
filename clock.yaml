@@ -631,6 +631,12 @@ text_sensor:
       return {out_buf};
 
 binary_sensor:
+  - platform: template
+    id: alarm_ringing_sensor
+    name: "Alarm Ringing"
+    icon: "mdi:alarm-light"
+    lambda: |-
+      return id(alarm_ringing);
   - platform: gpio
     name: Button
     id: front_button
