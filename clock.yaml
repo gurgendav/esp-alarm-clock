@@ -1182,7 +1182,7 @@ lvgl:
             border_width: 1
             border_color: 0xFFB4AB
             shadow_width: 0
-            on_click:
+            on_long_press:
               then:
                 - script.execute: dismiss_alarm
                 - script.execute: reset_idle_timer

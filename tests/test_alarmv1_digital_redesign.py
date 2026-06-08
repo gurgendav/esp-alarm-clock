@@ -198,6 +198,14 @@ def test_v2_exposes_alarm_ringing_state_to_home_assistant():
     assert "return id(alarm_ringing);" in text
 
 
+def test_v2_touch_stop_requires_long_press():
+    text = read_clock()
+    stop_block = text.split("id: stop_button", 1)[1].split("widgets:", 1)[0]
+    assert "on_click:" not in stop_block
+    assert "on_long_press:" in stop_block
+    assert "script.execute: dismiss_alarm" in stop_block
+
+
 def test_v2_home_music_button_is_state_aware():
     text = read_clock()
     button_block = text.split("id: menu_music_play_button", 1)[1].split("widgets:", 1)[0]
