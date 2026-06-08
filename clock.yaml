@@ -100,10 +100,6 @@ globals:
     type: uint32_t
     restore_value: yes
     initial_value: "0"
-  - id: skip_next_ring_targets_override
-    type: bool
-    restore_value: yes
-    initial_value: "false"
   - id: last_alarm_minute_key
     type: int
     restore_value: no
@@ -276,7 +272,6 @@ switch:
           id(alarm_enabled) = false;
           id(skip_next_ring) = false;
           id(skip_next_ring_epoch) = 0;
-          id(skip_next_ring_targets_override) = false;
           id(next_ring_override_active) = false;
           id(next_ring_override_epoch) = 0;
           ESP_LOGI("alarm", "Alarm disabled / away mode enabled");
@@ -1720,37 +1715,25 @@ script:
             if (id(skip_next_ring_epoch) == 0 || skipped_minute < now_minute) {
               id(skip_next_ring) = false;
               id(skip_next_ring_epoch) = 0;
-              id(skip_next_ring_targets_override) = false;
             }
           }
 
           if (id(next_ring_override_active)) {
             const uint32_t override_minute = uint32_t(id(next_ring_override_epoch) / 60);
             if (override_minute >= now_minute) {
-              if (id(skip_next_ring) && id(skip_next_ring_targets_override) && id(skip_next_ring_epoch) != 0 &&
-                  override_minute == uint32_t(id(skip_next_ring_epoch) / 60)) {
-                ESP_LOGI("alarm", "Skipping one-time override; keeping override resumable and using scheduled fallback");
-              } else {
-                id(next_alarm_available) = true;
-                id(next_alarm_epoch) = id(next_ring_override_epoch);
-                return;
-              }
-            } else {
-              id(next_ring_override_active) = false;
-              id(next_ring_override_epoch) = 0;
-              if (id(skip_next_ring_targets_override)) {
-                id(skip_next_ring) = false;
-                id(skip_next_ring_epoch) = 0;
-                id(skip_next_ring_targets_override) = false;
-              }
+              id(next_alarm_available) = true;
+              id(next_alarm_epoch) = id(next_ring_override_epoch);
+              return;
             }
+            id(next_ring_override_active) = false;
+            id(next_ring_override_epoch) = 0;
           }
 
           if (id(snooze_active)) {
             int day_offset = (id(snooze_day_of_year) == now.day_of_year) ? 0 : 1;
             const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
             const uint32_t snooze_epoch = uint32_t(midnight_epoch + (day_offset * 86400) + (id(snooze_hour) * 3600) + (id(snooze_minute) * 60));
-            if (!(id(skip_next_ring) && !id(skip_next_ring_targets_override) && id(skip_next_ring_epoch) != 0 &&
+            if (!(id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
                   uint32_t(snooze_epoch / 60) == uint32_t(id(skip_next_ring_epoch) / 60))) {
               id(next_alarm_epoch) = snooze_epoch;
               id(next_alarm_available) = true;
@@ -1779,7 +1762,7 @@ script:
             }
             const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
             const uint32_t candidate_epoch = uint32_t(midnight_epoch + (offset * 86400) + (candidate_alarm->hour * 3600) + (candidate_alarm->minute * 60));
-            if (id(skip_next_ring) && !id(skip_next_ring_targets_override) && id(skip_next_ring_epoch) != 0 &&
+            if (id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
                 uint32_t(candidate_epoch / 60) == uint32_t(id(skip_next_ring_epoch) / 60)) {
               continue;
             }
@@ -1918,7 +1901,6 @@ script:
           if (id(skip_next_ring)) {
             id(skip_next_ring) = false;
             id(skip_next_ring_epoch) = 0;
-            id(skip_next_ring_targets_override) = false;
             ESP_LOGI("ui", "Skip next ring cleared");
             return;
           }
@@ -1926,12 +1908,17 @@ script:
             ESP_LOGW("ui", "Skip next ring requested but there is no next alarm available");
             return;
           }
+          if (id(next_ring_override_active) && id(next_ring_override_epoch) != 0 &&
+              uint32_t(id(next_alarm_epoch) / 60) == uint32_t(id(next_ring_override_epoch) / 60)) {
+            id(next_ring_override_active) = false;
+            id(next_ring_override_epoch) = 0;
+            ESP_LOGI("ui", "Skip one-time override removed; restored regular next ring");
+            return;
+          }
           id(skip_next_ring) = true;
           id(skip_next_ring_epoch) = id(next_alarm_epoch);
-          id(skip_next_ring_targets_override) = id(next_ring_override_active) && id(next_ring_override_epoch) != 0 &&
-            uint32_t(id(next_alarm_epoch) / 60) == uint32_t(id(next_ring_override_epoch) / 60);
           auto skipped_alarm = ESPTime::from_epoch_local(id(skip_next_ring_epoch));
-          ESP_LOGI("ui", "Skip next ring set for %02d:%02d override=%d", skipped_alarm.hour, skipped_alarm.minute, id(skip_next_ring_targets_override));
+          ESP_LOGI("ui", "Skip next ring set for %02d:%02d", skipped_alarm.hour, skipped_alarm.minute);
       - script.execute: update_alarm_status_ui
 
   - id: open_home_menu
