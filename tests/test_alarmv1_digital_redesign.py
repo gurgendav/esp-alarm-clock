@@ -198,12 +198,30 @@ def test_v2_exposes_alarm_ringing_state_to_home_assistant():
     assert "return id(alarm_ringing);" in text
 
 
-def test_v2_touch_stop_requires_long_press():
+def test_v2_touch_stop_requires_hold_progress():
     text = read_clock()
     stop_block = text.split("id: stop_button", 1)[1].split("widgets:", 1)[0]
     assert "on_click:" not in stop_block
-    assert "on_long_press:" in stop_block
-    assert "script.execute: dismiss_alarm" in stop_block
+    assert "on_press:" in stop_block
+    assert "script.execute: begin_alarm_stop_hold_touch" in stop_block
+    assert "on_release:" in stop_block
+    assert "script.execute: cancel_alarm_stop_hold" in stop_block
+
+    assert "id: stop_hold_bar" in text
+    assert "lvgl.bar.update:" in text
+    assert "id(alarm_stop_hold_started_ms)" in text
+    assert "id: finish_alarm_stop_hold" in text
+
+
+def test_v2_physical_button_shows_same_hold_to_stop_progress():
+    text = read_clock()
+    front_button_block = text.split("id: front_button", 1)[1].split("spi:", 1)[0]
+    assert "on_press:" in front_button_block
+    assert "script.execute: begin_alarm_stop_hold_front" in front_button_block
+    assert "on_release:" in front_button_block
+    assert "script.execute: cancel_alarm_stop_hold" in front_button_block
+    assert "id(front_button_stop_consumed)" in front_button_block
+    assert "script.execute: home_all_lights_off" in front_button_block
 
 
 def test_v2_home_music_button_is_state_aware():

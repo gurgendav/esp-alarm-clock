@@ -144,6 +144,22 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: alarm_stop_hold_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: alarm_stop_hold_started_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: alarm_stop_hold_from_front_button
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: front_button_stop_consumed
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: last_interaction_ms
     type: uint32_t
     restore_value: no
@@ -649,6 +665,16 @@ binary_sensor:
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: "return id(alarm_ringing);"
+            then:
+              - script.execute: begin_alarm_stop_hold_front
+    on_release:
+      then:
+        - script.execute: cancel_alarm_stop_hold
     on_multi_click:
       - timing:
           - ON for at least 3s
@@ -656,19 +682,26 @@ binary_sensor:
         then:
           - if:
               condition:
-                lambda: "return id(media_screen_visible);"
+                lambda: "return id(front_button_stop_consumed);"
               then:
-                - script.execute: close_media_screen
-                - script.execute: stop_morning_music_on_ha
+                - lambda: |-
+                    id(front_button_stop_consumed) = false;
               else:
                 - if:
                     condition:
-                      lambda: "return id(alarm_ringing) || id(snooze_active);"
+                      lambda: "return id(media_screen_visible);"
                     then:
-                      - script.execute: dismiss_alarm
+                      - script.execute: close_media_screen
+                      - script.execute: stop_morning_music_on_ha
                     else:
-                      - script.execute: home_all_lights_off
-                      - script.execute: close_home_menu
+                      - if:
+                          condition:
+                            lambda: "return id(alarm_ringing) || id(snooze_active);"
+                          then:
+                            - script.execute: dismiss_alarm
+                          else:
+                            - script.execute: home_all_lights_off
+                            - script.execute: close_home_menu
           - script.execute: reset_idle_timer
       - timing:
           - ON for at most 500ms
@@ -1182,13 +1215,36 @@ lvgl:
             border_width: 1
             border_color: 0xFFB4AB
             shadow_width: 0
-            on_long_press:
+            on_press:
               then:
-                - script.execute: dismiss_alarm
-                - script.execute: reset_idle_timer
+                - script.execute: begin_alarm_stop_hold_touch
+            on_release:
+              then:
+                - script.execute: cancel_alarm_stop_hold
+            on_press_lost:
+              then:
+                - script.execute: cancel_alarm_stop_hold
+            on_cancel:
+              then:
+                - script.execute: cancel_alarm_stop_hold
             widgets:
+              - bar:
+                  id: stop_hold_bar
+                  width: 126
+                  height: 8
+                  align: BOTTOM_MID
+                  y: -8
+                  min_value: 0
+                  max_value: 100
+                  value: 0
+                  animated: false
+                  bg_color: 0x3A0A07
+                  indicator:
+                    bg_color: 0xFFB4AB
               - label:
+                  id: stop_button_label
                   align: CENTER
+                  y: -4
                   text_align: center
                   text_color: 0xFFB4AB
                   text_font: clock_body_font_20
@@ -1583,6 +1639,21 @@ interval:
                 ESP_LOGD("ui", "Screen dimmed after inactivity");
             - script.execute: apply_idle_brightness
 
+  - interval: 100ms
+    then:
+      - if:
+          condition:
+            lambda: "return id(alarm_stop_hold_active);"
+          then:
+            - script.execute: update_alarm_stop_hold_ui
+            - if:
+                condition:
+                  lambda: |-
+                    const uint32_t hold_ms = 3000;
+                    return millis() - id(alarm_stop_hold_started_ms) >= hold_ms;
+                then:
+                  - script.execute: finish_alarm_stop_hold
+
   - interval: 400ms
     then:
       - if:
@@ -1710,6 +1781,89 @@ script:
             id(next_alarm_available) = false;
             id(next_alarm_epoch) = 0;
           }
+
+  - id: update_alarm_stop_hold_ui
+    then:
+      - lvgl.bar.update:
+          id: stop_hold_bar
+          value: !lambda |-
+            if (!id(alarm_stop_hold_active)) {
+              return 0;
+            }
+            const uint32_t hold_ms = 3000;
+            const uint32_t elapsed_ms = millis() - id(alarm_stop_hold_started_ms);
+            if (elapsed_ms >= hold_ms) {
+              return 100;
+            }
+            return int((elapsed_ms * 100U) / hold_ms);
+      - lvgl.label.update:
+          id: stop_button_label
+          text: !lambda |-
+            static char hold_buf[16];
+            if (!id(alarm_stop_hold_active)) {
+              snprintf(hold_buf, sizeof(hold_buf), "STOP");
+              return hold_buf;
+            }
+            const uint32_t hold_ms = 3000;
+            const uint32_t elapsed_ms = millis() - id(alarm_stop_hold_started_ms);
+            const uint32_t percent = elapsed_ms >= hold_ms ? 100 : (elapsed_ms * 100U) / hold_ms;
+            snprintf(hold_buf, sizeof(hold_buf), "HOLD %u%%", (unsigned) percent);
+            return hold_buf;
+
+  - id: begin_alarm_stop_hold_touch
+    then:
+      - lambda: |-
+          if (!id(alarm_ringing)) {
+            return;
+          }
+          id(alarm_stop_hold_active) = true;
+          id(alarm_stop_hold_from_front_button) = false;
+          id(alarm_stop_hold_started_ms) = millis();
+          ESP_LOGI("alarm", "Touch stop hold started");
+      - script.execute: update_alarm_stop_hold_ui
+      - script.execute: reset_idle_timer
+
+  - id: begin_alarm_stop_hold_front
+    then:
+      - lambda: |-
+          if (!id(alarm_ringing)) {
+            return;
+          }
+          id(alarm_stop_hold_active) = true;
+          id(alarm_stop_hold_from_front_button) = true;
+          id(alarm_stop_hold_started_ms) = millis();
+          id(front_button_stop_consumed) = false;
+          ESP_LOGI("alarm", "Physical stop hold started");
+      - script.execute: update_alarm_stop_hold_ui
+      - script.execute: reset_idle_timer
+
+  - id: cancel_alarm_stop_hold
+    then:
+      - lambda: |-
+          if (id(alarm_stop_hold_active)) {
+            ESP_LOGI("alarm", "Stop hold cancelled");
+          }
+          id(alarm_stop_hold_active) = false;
+          id(alarm_stop_hold_from_front_button) = false;
+          id(alarm_stop_hold_started_ms) = 0;
+      - script.execute: update_alarm_stop_hold_ui
+
+  - id: finish_alarm_stop_hold
+    then:
+      - if:
+          condition:
+            lambda: "return id(alarm_stop_hold_active) && id(alarm_ringing);"
+          then:
+            - lambda: |-
+                if (id(alarm_stop_hold_from_front_button)) {
+                  id(front_button_stop_consumed) = true;
+                }
+                id(alarm_stop_hold_active) = false;
+                id(alarm_stop_hold_from_front_button) = false;
+                id(alarm_stop_hold_started_ms) = 0;
+                ESP_LOGI("alarm", "Stop hold complete; dismissing alarm");
+            - script.execute: update_alarm_stop_hold_ui
+            - script.execute: dismiss_alarm
 
   - id: clear_snooze
     then:
@@ -2616,9 +2770,13 @@ script:
             ESP_LOGI("alarm", "Stopping alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
           }
           id(alarm_ringing) = false;
+          id(alarm_stop_hold_active) = false;
+          id(alarm_stop_hold_from_front_button) = false;
+          id(alarm_stop_hold_started_ms) = 0;
       - script.stop: alarm_loop
       - script.stop: alarm_timeout
       - output.turn_off: buzzer
+      - script.execute: update_alarm_stop_hold_ui
       - script.execute: stop_alarm_media_on_ha
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
