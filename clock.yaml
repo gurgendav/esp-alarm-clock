@@ -1807,7 +1807,7 @@ script:
             const uint32_t hold_ms = 3000;
             const uint32_t elapsed_ms = millis() - id(alarm_stop_hold_started_ms);
             const uint32_t percent = elapsed_ms >= hold_ms ? 100 : (elapsed_ms * 100U) / hold_ms;
-            snprintf(hold_buf, sizeof(hold_buf), "HOLD %u%%", (unsigned) percent);
+            snprintf(hold_buf, sizeof(hold_buf), "HOLD %u", (unsigned) percent);
             return hold_buf;
 
   - id: begin_alarm_stop_hold_touch

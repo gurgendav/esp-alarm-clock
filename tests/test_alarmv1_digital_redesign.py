@@ -211,6 +211,8 @@ def test_v2_touch_stop_requires_hold_progress():
     assert "lvgl.bar.update:" in text
     assert "id(alarm_stop_hold_started_ms)" in text
     assert "id: finish_alarm_stop_hold" in text
+    assert '"HOLD %u%%"' not in text
+    assert '"HOLD %u"' in text
 
 
 def test_v2_physical_button_shows_same_hold_to_stop_progress():
