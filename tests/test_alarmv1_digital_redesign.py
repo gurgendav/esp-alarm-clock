@@ -168,6 +168,21 @@ def test_v2_rotary_does_not_create_override_while_next_ring_is_skipped():
         assert "return;" in skip_guard
 
 
+def test_v2_skipping_one_time_override_does_not_skip_regular_ring_at_same_time():
+    text = read_clock()
+    assert "id: skip_next_ring_targets_override" in text
+    assert "id(skip_next_ring_targets_override) = false;" in text
+    assert "id(skip_next_ring_targets_override) = id(next_ring_override_active)" in text
+
+    sync_block = text.split("  - id: sync_next_alarm_state", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "id(skip_next_ring_targets_override) &&" in sync_block
+    assert "Skipping one-time override; keeping override resumable and using scheduled fallback" in sync_block
+    assert "!id(skip_next_ring_targets_override)" in sync_block
+
+    skipped_override_block = sync_block.split("Skipping one-time override", 1)[0]
+    assert "id(next_ring_override_active) = false;" not in skipped_override_block
+
+
 def test_v2_anticlockwise_rotary_starts_quick_override_when_regular_alarm_is_far_away():
     text = read_clock()
     assert "smart_quick_override_threshold_minutes" in text
