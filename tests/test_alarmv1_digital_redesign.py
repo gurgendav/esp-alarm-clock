@@ -204,6 +204,18 @@ def test_v2_anticlockwise_rotary_starts_quick_override_when_regular_alarm_is_far
     assert smart_start < normal_adjust
 
 
+def test_v2_missed_alarm_catches_up_after_power_or_connection_recovery():
+    text = read_clock()
+    last_key_block = text.split("id: last_alarm_minute_key", 1)[1].split("  - id:", 1)[0]
+    assert "restore_value: yes" in last_key_block
+    assert "const uint32_t missed_alarm_catch_up_minutes = 120;" in text
+    assert "Missed one-time override catch-up" in text
+    assert "Missed scheduled alarm catch-up" in text
+    assert "now_minute > target_minute + missed_alarm_catch_up_minutes" in text
+    assert "id(last_alarm_minute_key) != int(candidate_minute)" in text
+    assert "skipped_minute + missed_alarm_catch_up_minutes < now_minute" in text
+
+
 def test_v2_exposes_alarm_ringing_state_to_home_assistant():
     text = read_clock()
     assert "id: alarm_ringing_sensor" in text

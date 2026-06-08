@@ -102,7 +102,7 @@ globals:
     initial_value: "0"
   - id: last_alarm_minute_key
     type: int
-    restore_value: no
+    restore_value: yes
     initial_value: "-1"
   - id: last_alarm_debug_minute_key
     type: int
@@ -1610,16 +1610,21 @@ interval:
               if (!id(next_alarm_available)) {
                 return false;
               }
+              const uint32_t missed_alarm_catch_up_minutes = 120;
               const uint32_t now_minute = uint32_t(now.timestamp / 60);
               const uint32_t target_minute = uint32_t(id(next_alarm_epoch) / 60);
-              if (now_minute != target_minute) {
+              if (now_minute < target_minute || now_minute > target_minute + missed_alarm_catch_up_minutes) {
                 return false;
               }
               if (id(last_alarm_minute_key) == int(target_minute)) {
                 return false;
               }
               id(last_alarm_minute_key) = int(target_minute);
-              ESP_LOGI("alarm", "Alarm trigger matched at %02d:%02d:%02d", now.hour, now.minute, now.second);
+              if (now_minute == target_minute) {
+                ESP_LOGI("alarm", "Alarm trigger matched at %02d:%02d:%02d", now.hour, now.minute, now.second);
+              } else {
+                ESP_LOGW("alarm", "Missed alarm catch-up trigger at %02d:%02d:%02d for target epoch minute %u", now.hour, now.minute, now.second, target_minute);
+              }
               return true;
           then:
             - script.execute: start_alarm
@@ -1709,10 +1714,12 @@ script:
             return;
           }
 
+          const uint32_t missed_alarm_catch_up_minutes = 120;
           const uint32_t now_minute = uint32_t(now.timestamp / 60);
+          const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
           if (id(skip_next_ring)) {
             const uint32_t skipped_minute = uint32_t(id(skip_next_ring_epoch) / 60);
-            if (id(skip_next_ring_epoch) == 0 || skipped_minute < now_minute) {
+            if (id(skip_next_ring_epoch) == 0 || skipped_minute + missed_alarm_catch_up_minutes < now_minute) {
               id(skip_next_ring) = false;
               id(skip_next_ring_epoch) = 0;
             }
@@ -1720,9 +1727,18 @@ script:
 
           if (id(next_ring_override_active)) {
             const uint32_t override_minute = uint32_t(id(next_ring_override_epoch) / 60);
+            const bool override_skipped = id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
+              override_minute == uint32_t(id(skip_next_ring_epoch) / 60);
             if (override_minute >= now_minute) {
               id(next_alarm_available) = true;
               id(next_alarm_epoch) = id(next_ring_override_epoch);
+              return;
+            }
+            if (!override_skipped && id(last_alarm_minute_key) != int(override_minute) &&
+                now_minute <= override_minute + missed_alarm_catch_up_minutes) {
+              id(next_alarm_available) = true;
+              id(next_alarm_epoch) = id(next_ring_override_epoch);
+              ESP_LOGW("alarm", "Missed one-time override catch-up: target epoch minute %u now %u", override_minute, now_minute);
               return;
             }
             id(next_ring_override_active) = false;
@@ -1731,12 +1747,17 @@ script:
 
           if (id(snooze_active)) {
             int day_offset = (id(snooze_day_of_year) == now.day_of_year) ? 0 : 1;
-            const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
             const uint32_t snooze_epoch = uint32_t(midnight_epoch + (day_offset * 86400) + (id(snooze_hour) * 3600) + (id(snooze_minute) * 60));
-            if (!(id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
-                  uint32_t(snooze_epoch / 60) == uint32_t(id(skip_next_ring_epoch) / 60))) {
+            const uint32_t snooze_minute_key = uint32_t(snooze_epoch / 60);
+            const bool snooze_skipped = id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
+              snooze_minute_key == uint32_t(id(skip_next_ring_epoch) / 60);
+            if (!snooze_skipped && (snooze_minute_key >= now_minute ||
+                (id(last_alarm_minute_key) != int(snooze_minute_key) && now_minute <= snooze_minute_key + missed_alarm_catch_up_minutes))) {
               id(next_alarm_epoch) = snooze_epoch;
               id(next_alarm_available) = true;
+              if (snooze_minute_key < now_minute) {
+                ESP_LOGW("alarm", "Missed snooze alarm catch-up: target epoch minute %u now %u", snooze_minute_key, now_minute);
+              }
               return;
             }
           }
@@ -1753,17 +1774,20 @@ script:
           for (int offset = 0; offset < 8; offset++) {
             const int candidate_dow = ((now.day_of_week - 1 + offset) % 7) + 1;
             auto candidate_alarm = (candidate_dow == 1 || candidate_dow == 7) ? weekend_alarm : weekday_alarm;
-            const int now_total_minutes = now.hour * 60 + now.minute;
-            const int candidate_total_minutes = candidate_alarm->hour * 60 + candidate_alarm->minute;
-            const bool valid_time = offset > 0 ||
-                                    candidate_total_minutes >= now_total_minutes;
-            if (!valid_time) {
+            const uint32_t candidate_epoch = uint32_t(midnight_epoch + (offset * 86400) + (candidate_alarm->hour * 3600) + (candidate_alarm->minute * 60));
+            const uint32_t candidate_minute = uint32_t(candidate_epoch / 60);
+            if (id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
+                candidate_minute == uint32_t(id(skip_next_ring_epoch) / 60)) {
               continue;
             }
-            const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
-            const uint32_t candidate_epoch = uint32_t(midnight_epoch + (offset * 86400) + (candidate_alarm->hour * 3600) + (candidate_alarm->minute * 60));
-            if (id(skip_next_ring) && id(skip_next_ring_epoch) != 0 &&
-                uint32_t(candidate_epoch / 60) == uint32_t(id(skip_next_ring_epoch) / 60)) {
+            if (candidate_minute < now_minute) {
+              if (offset == 0 && id(last_alarm_minute_key) != int(candidate_minute) &&
+                  now_minute <= candidate_minute + missed_alarm_catch_up_minutes) {
+                id(next_alarm_epoch) = candidate_epoch;
+                id(next_alarm_available) = true;
+                ESP_LOGW("alarm", "Missed scheduled alarm catch-up: target epoch minute %u now %u", candidate_minute, now_minute);
+                return;
+              }
               continue;
             }
             id(next_alarm_epoch) = candidate_epoch;
