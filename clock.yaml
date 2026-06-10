@@ -284,38 +284,6 @@ switch:
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
 
-  - platform: template
-    id: parents_home_mode_switch
-    name: "Parents Home Mode"
-    icon: "mdi:lock-clock"
-    restore_mode: RESTORE_DEFAULT_OFF
-    lambda: |-
-      return id(read_only_mode);
-    turn_on_action:
-      - lambda: |-
-          id(read_only_mode) = true;
-          id(skip_next_ring) = false;
-          id(skip_next_ring_epoch) = 0;
-          id(next_ring_override_active) = false;
-          id(next_ring_override_epoch) = 0;
-          id(home_menu_visible) = false;
-          id(media_screen_visible) = false;
-          id(morning_music_prompt_until_ms) = 0;
-          id(morning_briefing_auto_start_ms) = 0;
-          id(morning_music_start_pending) = false;
-          id(morning_music_start_pending_until_ms) = 0;
-          ESP_LOGI("alarm", "Parents Home Mode enabled; alarm scheduling controls locked");
-      - script.stop: auto_close_home_menu
-      - script.execute: stop_morning_music_on_ha
-      - script.execute: update_alarm_status_ui
-      - script.execute: reset_idle_timer
-    turn_off_action:
-      - lambda: |-
-          id(read_only_mode) = false;
-          ESP_LOGI("alarm", "Parents Home Mode disabled; alarm scheduling controls unlocked");
-      - script.execute: update_alarm_status_ui
-      - script.execute: reset_idle_timer
-
 button:
   - platform: template
     name: "Stop Alarm"
@@ -626,6 +594,41 @@ datetime:
       then:
         - script.execute: update_minutes_hand
 text_sensor:
+  - platform: homeassistant
+    id: parents_home_mode_state
+    entity_id: input_boolean.parents_home_mode
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            const bool enabled = id(parents_home_mode_state).state == "on";
+            if (id(read_only_mode) == enabled) {
+              return;
+            }
+            id(read_only_mode) = enabled;
+            if (enabled) {
+              id(skip_next_ring) = false;
+              id(skip_next_ring_epoch) = 0;
+              id(next_ring_override_active) = false;
+              id(next_ring_override_epoch) = 0;
+              id(home_menu_visible) = false;
+              id(media_screen_visible) = false;
+              id(morning_music_prompt_until_ms) = 0;
+              id(morning_briefing_auto_start_ms) = 0;
+              id(morning_music_start_pending) = false;
+              id(morning_music_start_pending_until_ms) = 0;
+              ESP_LOGI("alarm", "Parents Home Mode enabled from Home Assistant");
+            } else {
+              ESP_LOGI("alarm", "Parents Home Mode disabled from Home Assistant");
+            }
+        - script.stop: auto_close_home_menu
+        - if:
+            condition:
+              lambda: "return id(read_only_mode);"
+            then:
+              - script.execute: stop_morning_music_on_ha
+        - script.execute: update_alarm_status_ui
+        - script.execute: reset_idle_timer
   - platform: homeassistant
     id: media_player_state
     entity_id: ${morning_briefing_player_entity}

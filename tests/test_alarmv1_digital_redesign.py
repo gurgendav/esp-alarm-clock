@@ -302,8 +302,13 @@ def test_v2_parents_home_mode_is_persistent_and_locks_scheduling_controls():
     text = read_clock()
     assert "id: read_only_mode" in text
     assert "restore_value: yes" in text.split("id: read_only_mode", 1)[1].split("  - id:", 1)[0]
-    assert "id: parents_home_mode_switch" in text
-    assert "name: \"Parents Home Mode\"" in text
+    assert "id: parents_home_mode_switch" not in text
+    assert "id: parents_home_mode_state" in text
+    assert "entity_id: input_boolean.parents_home_mode" in text
+    parents_state_block = text.split("id: parents_home_mode_state", 1)[1].split("  - platform:", 1)[0]
+    assert "id(read_only_mode) = enabled;" in parents_state_block
+    assert "Parents Home Mode enabled from Home Assistant" in parents_state_block
+    assert "Parents Home Mode disabled from Home Assistant" in parents_state_block
 
     center_short_block = text.split("id: center_tap_button", 1)[1].split("on_long_press:", 1)[0]
     assert center_short_block.index("id(read_only_mode)") < center_short_block.index("toggle_skip_next_ring")
