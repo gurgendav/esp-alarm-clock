@@ -296,3 +296,47 @@ def test_v2_night_dim_first_touch_only_wakes_display():
     assert resume_block.index("wake_only_touch_until_ms") < resume_block.index("enable_alarm")
     assert resume_block.index("wake_only_touch_until_ms") < resume_block.index("toggle_skip_next_ring")
     assert "Resume tap ignored after night dim wake" in resume_block
+
+
+def test_v2_parents_home_mode_is_persistent_and_locks_scheduling_controls():
+    text = read_clock()
+    assert "id: read_only_mode" in text
+    assert "restore_value: yes" in text.split("id: read_only_mode", 1)[1].split("  - id:", 1)[0]
+    assert "id: parents_home_mode_switch" in text
+    assert "name: \"Parents Home Mode\"" in text
+
+    center_short_block = text.split("id: center_tap_button", 1)[1].split("on_long_press:", 1)[0]
+    assert center_short_block.index("id(read_only_mode)") < center_short_block.index("toggle_skip_next_ring")
+
+    center_long_block = text.split("on_long_press:", 1)[1].split("id: home_menu_panel", 1)[0]
+    assert "!id(read_only_mode)" in center_long_block
+    assert center_long_block.index("!id(read_only_mode)") < center_long_block.index("open_home_menu")
+
+    toggle_block = text.split("  - id: toggle_skip_next_ring", 1)[1].split("\n\n  - id:", 1)[0]
+    readonly_guard = toggle_block.split("Parents Home Mode blocks skip next ring", 1)[0]
+    assert "if (id(read_only_mode))" in readonly_guard
+    assert "id(skip_next_ring) = false;" in readonly_guard
+    assert "id(next_ring_override_active) = false;" in readonly_guard
+    assert readonly_guard.index("if (id(read_only_mode))") < toggle_block.index("id(skip_next_ring) = true;")
+
+    sync_block = text.split("  - id: sync_next_alarm_state", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "Parents Home Mode cleared persisted skip/override state" in sync_block
+    assert sync_block.index("if (id(read_only_mode))") < sync_block.index("if (id(skip_next_ring))")
+
+
+def test_v2_parents_home_mode_blocks_one_time_override_and_auto_briefing():
+    text = read_clock()
+    clockwise_block = text.split("on_clockwise:", 1)[1].split("on_anticlockwise:", 1)[0]
+    anticlockwise_block = text.split("on_anticlockwise:", 1)[1].split("time:", 1)[0]
+    for block in (clockwise_block, anticlockwise_block):
+        assert "id(read_only_mode)" in block
+        assert block.index("id(read_only_mode)") < block.index("id(next_ring_override_active) = true;")
+
+    dismiss_block = text.split("  - id: dismiss_alarm", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "if (id(read_only_mode))" in dismiss_block
+    assert "Parents Home Mode dismisses morning briefing/music prompt" in dismiss_block
+    readonly_dismiss = dismiss_block.split("if (id(read_only_mode))", 1)[1].split("} else {", 1)[0]
+    assert "id(morning_music_prompt_until_ms) = 0;" in readonly_dismiss
+    assert "id(morning_briefing_auto_start_ms) = 0;" in readonly_dismiss
+    assert "now_ms + 60000" not in readonly_dismiss
+    assert "now_ms + 15000" not in readonly_dismiss

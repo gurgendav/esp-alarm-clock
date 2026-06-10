@@ -92,6 +92,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: read_only_mode
+    type: bool
+    restore_value: yes
+    initial_value: "false"
   - id: skip_next_ring
     type: bool
     restore_value: yes
@@ -280,6 +284,38 @@ switch:
       - script.execute: update_minutes_hand
       - script.execute: reset_idle_timer
 
+  - platform: template
+    id: parents_home_mode_switch
+    name: "Parents Home Mode"
+    icon: "mdi:lock-clock"
+    restore_mode: RESTORE_DEFAULT_OFF
+    lambda: |-
+      return id(read_only_mode);
+    turn_on_action:
+      - lambda: |-
+          id(read_only_mode) = true;
+          id(skip_next_ring) = false;
+          id(skip_next_ring_epoch) = 0;
+          id(next_ring_override_active) = false;
+          id(next_ring_override_epoch) = 0;
+          id(home_menu_visible) = false;
+          id(media_screen_visible) = false;
+          id(morning_music_prompt_until_ms) = 0;
+          id(morning_briefing_auto_start_ms) = 0;
+          id(morning_music_start_pending) = false;
+          id(morning_music_start_pending_until_ms) = 0;
+          ESP_LOGI("alarm", "Parents Home Mode enabled; alarm scheduling controls locked");
+      - script.stop: auto_close_home_menu
+      - script.execute: stop_morning_music_on_ha
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+    turn_off_action:
+      - lambda: |-
+          id(read_only_mode) = false;
+          ESP_LOGI("alarm", "Parents Home Mode disabled; alarm scheduling controls unlocked");
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+
 button:
   - platform: template
     name: "Stop Alarm"
@@ -332,6 +368,10 @@ sensor:
           }
 
           if (id(alarm_ringing)) {
+            if (id(read_only_mode)) {
+              ESP_LOGI("alarm", "Parents Home Mode blocks snooze adjustment while ringing");
+              return;
+            }
             id(snooze_minutes) += step_minutes;
             if (id(snooze_minutes) > 60) {
               id(snooze_minutes) = 60;
@@ -367,6 +407,11 @@ sensor:
 
           if (id(skip_next_ring)) {
             ESP_LOGI("alarm", "Ignoring encoder turn while next ring is skipped");
+            return;
+          }
+
+          if (id(read_only_mode)) {
+            ESP_LOGI("alarm", "Parents Home Mode blocks one-time override adjustment");
             return;
           }
 
@@ -419,6 +464,10 @@ sensor:
           }
 
           if (id(alarm_ringing)) {
+            if (id(read_only_mode)) {
+              ESP_LOGI("alarm", "Parents Home Mode blocks snooze adjustment while ringing");
+              return;
+            }
             id(snooze_minutes) -= step_minutes;
             if (id(snooze_minutes) < 5) {
               id(snooze_minutes) = 5;
@@ -454,6 +503,11 @@ sensor:
 
           if (id(skip_next_ring)) {
             ESP_LOGI("alarm", "Ignoring encoder turn while next ring is skipped");
+            return;
+          }
+
+          if (id(read_only_mode)) {
+            ESP_LOGI("alarm", "Parents Home Mode blocks one-time override adjustment");
             return;
           }
 
@@ -1006,7 +1060,7 @@ lvgl:
                           else:
                             - if:
                                 condition:
-                                  lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
+                                  lambda: "return !id(read_only_mode) && !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                                 then:
                                   - script.execute: toggle_skip_next_ring
                       - script.execute: reset_idle_timer
@@ -1029,7 +1083,7 @@ lvgl:
                     else:
                       - if:
                           condition:
-                            lambda: "return !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
+                            lambda: "return !id(read_only_mode) && !id(alarm_ringing) && !id(home_menu_visible) && !id(media_screen_visible);"
                           then:
                             - script.execute: open_home_menu
                       - script.execute: reset_idle_timer
@@ -1714,6 +1768,16 @@ script:
             return;
           }
 
+          if (id(read_only_mode)) {
+            if (id(skip_next_ring) || id(next_ring_override_active)) {
+              ESP_LOGI("alarm", "Parents Home Mode cleared persisted skip/override state");
+            }
+            id(skip_next_ring) = false;
+            id(skip_next_ring_epoch) = 0;
+            id(next_ring_override_active) = false;
+            id(next_ring_override_epoch) = 0;
+          }
+
           const uint32_t missed_alarm_catch_up_minutes = 120;
           const uint32_t now_minute = uint32_t(now.timestamp / 60);
           const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
@@ -1908,8 +1972,16 @@ script:
       - lambda: |-
           const uint32_t now_ms = millis();
           id(dismiss_feedback_until_ms) = now_ms + 3000;
-          id(morning_music_prompt_until_ms) = now_ms + 60000;
-          id(morning_briefing_auto_start_ms) = now_ms + 15000;
+          if (id(read_only_mode)) {
+            id(morning_music_prompt_until_ms) = 0;
+            id(morning_briefing_auto_start_ms) = 0;
+            id(morning_music_start_pending) = false;
+            id(morning_music_start_pending_until_ms) = 0;
+            ESP_LOGI("alarm", "Parents Home Mode dismisses morning briefing/music prompt");
+          } else {
+            id(morning_music_prompt_until_ms) = now_ms + 60000;
+            id(morning_briefing_auto_start_ms) = now_ms + 15000;
+          }
       - script.execute: clear_snooze
       - script.execute: stop_alarm
 
@@ -1922,6 +1994,14 @@ script:
     then:
       - script.execute: sync_next_alarm_state
       - lambda: |-
+          if (id(read_only_mode)) {
+            id(skip_next_ring) = false;
+            id(skip_next_ring_epoch) = 0;
+            id(next_ring_override_active) = false;
+            id(next_ring_override_epoch) = 0;
+            ESP_LOGI("ui", "Parents Home Mode blocks skip next ring");
+            return;
+          }
           if (id(skip_next_ring)) {
             id(skip_next_ring) = false;
             id(skip_next_ring_epoch) = 0;
@@ -1948,6 +2028,12 @@ script:
   - id: open_home_menu
     then:
       - lambda: |-
+          if (id(read_only_mode)) {
+            id(home_menu_visible) = false;
+            id(media_screen_visible) = false;
+            ESP_LOGI("ui", "Parents Home Mode blocks Home menu");
+            return;
+          }
           id(home_menu_visible) = true;
           ESP_LOGI("ui", "Home menu opened");
       - script.execute: update_alarm_status_ui
@@ -2168,6 +2254,14 @@ script:
   - id: open_media_screen
     then:
       - lambda: |-
+          if (id(read_only_mode)) {
+            id(media_screen_visible) = false;
+            id(home_menu_visible) = false;
+            id(morning_music_prompt_until_ms) = 0;
+            id(morning_briefing_auto_start_ms) = 0;
+            ESP_LOGI("media", "Parents Home Mode blocks media screen");
+            return;
+          }
           id(media_screen_visible) = true;
           id(home_menu_visible) = false;
           ESP_LOGI("media", "Media screen opened");
@@ -2479,6 +2573,9 @@ script:
             if (!id(alarm_enabled)) {
               return "AWAY";
             }
+            if (id(read_only_mode)) {
+              return "PARENTS";
+            }
             if (id(snooze_active)) {
               return "SNOOZING";
             }
@@ -2501,6 +2598,9 @@ script:
             if (!id(alarm_enabled)) {
               return lv_color_hex(0xB6F7FF);
             }
+            if (id(read_only_mode)) {
+              return lv_color_hex(0xD8DEE9);
+            }
             if (id(snooze_active)) {
               return lv_color_hex(0x4DD9E4);
             }
@@ -2520,7 +2620,7 @@ script:
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return lv_color_hex(0xFFB4AB);
             }
-            if (!id(alarm_enabled) || id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring)) {
+            if (!id(alarm_enabled) || id(read_only_mode) || id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring)) {
               return lv_color_hex(0x000000);
             }
             return lv_color_hex(0xB8F5C1);
@@ -2677,6 +2777,11 @@ script:
                       id(media_screen_visible) = false;
                   - lvgl.widget.hide: [clock_time_label, clock_divider, clock_status_pill, clock_next_label, clock_countdown_label, clock_resume_button, center_tap_button, home_menu_panel, all_lights_off_button, close_menu_button, briefing_prompt_panel, menu_music_play_button, media_screen_panel]
                   - lvgl.widget.show: [clock_state_surface, ring_title_label, snooze_button, stop_button, snooze_hint_label]
+                  - if:
+                      condition:
+                        lambda: "return id(read_only_mode);"
+                      then:
+                        - lvgl.widget.hide: [snooze_button, snooze_hint_label]
           else:
             - if:
                 condition:
@@ -2733,23 +2838,30 @@ script:
     parameters:
       minutes: int
     then:
-      - lambda: |-
-          auto now = id(sntp_time).now();
-          if (!now.is_valid()) {
-            now = id(rtctime).now();
-          }
-          if (!now.is_valid()) {
-            ESP_LOGW("alarm", "Snooze requested but current time is invalid");
-            return;
-          }
-          auto snooze_until = esphome::ESPTime::from_epoch_local(now.timestamp + (minutes * 60));
-          id(snooze_active) = true;
-          id(snooze_day_of_year) = snooze_until.day_of_year;
-          id(snooze_hour) = snooze_until.hour;
-          id(snooze_minute) = snooze_until.minute;
-          ESP_LOGI("alarm", "Snoozed for %d minutes until day=%d %02d:%02d", minutes, id(snooze_day_of_year), id(snooze_hour), id(snooze_minute));
-      - script.execute: stop_alarm
-      - script.execute: update_minutes_hand
+      - if:
+          condition:
+            lambda: "return id(read_only_mode);"
+          then:
+            - lambda: |-
+                ESP_LOGI("alarm", "Parents Home Mode blocks snooze");
+          else:
+            - lambda: |-
+                auto now = id(sntp_time).now();
+                if (!now.is_valid()) {
+                  now = id(rtctime).now();
+                }
+                if (!now.is_valid()) {
+                  ESP_LOGW("alarm", "Snooze requested but current time is invalid");
+                  return;
+                }
+                auto snooze_until = esphome::ESPTime::from_epoch_local(now.timestamp + (minutes * 60));
+                id(snooze_active) = true;
+                id(snooze_day_of_year) = snooze_until.day_of_year;
+                id(snooze_hour) = snooze_until.hour;
+                id(snooze_minute) = snooze_until.minute;
+                ESP_LOGI("alarm", "Snoozed for %d minutes until day=%d %02d:%02d", minutes, id(snooze_day_of_year), id(snooze_hour), id(snooze_minute));
+            - script.execute: stop_alarm
+            - script.execute: update_minutes_hand
 
   - id: snooze_alarm
     then:
