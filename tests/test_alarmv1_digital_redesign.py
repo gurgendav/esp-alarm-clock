@@ -298,6 +298,35 @@ def test_v2_night_dim_first_touch_only_wakes_display():
     assert "Resume tap ignored after night dim wake" in resume_block
 
 
+def test_v2_alarm_external_audio_retries_when_playback_drops_quickly():
+    text = read_clock()
+    assert "id: alarm_audio_player_state" in text
+    assert "entity_id: ${alarm_audio_player_entity}" in text
+    assert "id: alarm_external_audio_playing_started_ms" in text
+    assert "id: alarm_external_audio_retry_count" in text
+    assert "id: alarm_external_audio_retry_needed" in text
+    assert "const uint32_t minimum_external_audio_ms = 45000;" in text
+    assert "External alarm audio stopped after %ums; retrying alarm audio" in text
+    assert "External alarm audio did not reach playing within 45s; retrying alarm audio" in text
+    assert "id(alarm_external_audio_retry_count) < 2" in text
+    assert "id: alarm_external_audio_watchdog" in text
+    assert "delay: 45s" in text
+
+    retry_block = text.split("id: alarm_audio_player_state", 1)[1].split("id: media_track_title", 1)[0]
+    assert "id(alarm_ringing)" in retry_block
+    assert "state == \"playing\"" in retry_block
+    assert "script.execute: alarm_loop" in retry_block
+    assert "script.execute: start_alarm_media_on_ha" in retry_block
+
+    start_block = text.split("\n  - id: start_alarm\n", 1)[1].split("\n\n  - id: stop_alarm", 1)[0]
+    assert "id(alarm_external_audio_playing_started_ms) = 0;" in start_block
+    assert "id(alarm_external_audio_retry_count) = 0;" in start_block
+
+    stop_block = text.split("  - id: stop_alarm", 1)[1].split("\n\n  - id: alarm_loop", 1)[0]
+    assert "id(alarm_external_audio_playing_started_ms) = 0;" in stop_block
+    assert "id(alarm_external_audio_retry_needed) = false;" in stop_block
+
+
 def test_v2_parents_home_mode_is_persistent_and_locks_scheduling_controls():
     text = read_clock()
     assert "id: read_only_mode" in text

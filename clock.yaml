@@ -92,6 +92,18 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+  - id: alarm_external_audio_playing_started_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+  - id: alarm_external_audio_retry_count
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: alarm_external_audio_retry_needed
+    type: bool
+    restore_value: no
+    initial_value: "false"
   - id: read_only_mode
     type: bool
     restore_value: yes
@@ -642,6 +654,44 @@ text_sensor:
               ESP_LOGI("media", "Morning music playback detected; clearing start pending state");
             }
         - script.execute: update_media_screen_ui
+  - platform: homeassistant
+    id: alarm_audio_player_state
+    entity_id: ${alarm_audio_player_entity}
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            id(alarm_external_audio_retry_needed) = false;
+            if (!id(alarm_ringing) || !id(alarm_audio_player_state).has_state()) {
+              return;
+            }
+            const uint32_t minimum_external_audio_ms = 45000;
+            const auto state = id(alarm_audio_player_state).state;
+            if (state == "playing") {
+              if (id(alarm_external_audio_playing_started_ms) == 0) {
+                id(alarm_external_audio_playing_started_ms) = millis();
+                ESP_LOGI("alarm", "External alarm audio playback detected");
+              }
+              return;
+            }
+            if (id(alarm_external_audio_playing_started_ms) == 0) {
+              return;
+            }
+            const uint32_t elapsed_ms = millis() - id(alarm_external_audio_playing_started_ms);
+            if (elapsed_ms < minimum_external_audio_ms && id(alarm_external_audio_retry_count) < 2) {
+              id(alarm_external_audio_retry_count) += 1;
+              id(alarm_external_audio_playing_started_ms) = 0;
+              id(alarm_external_audio_retry_needed) = true;
+              ESP_LOGW("alarm", "External alarm audio stopped after %ums; retrying alarm audio (%d/2)", elapsed_ms, id(alarm_external_audio_retry_count));
+            }
+        - if:
+            condition:
+              lambda: "return id(alarm_external_audio_retry_needed);"
+            then:
+              - lambda: |-
+                  id(alarm_external_audio_retry_needed) = false;
+              - script.execute: alarm_loop
+              - script.execute: start_alarm_media_on_ha
   - platform: homeassistant
     id: media_track_title
     entity_id: ${morning_briefing_player_entity}
@@ -2114,8 +2164,26 @@ script:
             }
             return 0.25f;
 
+  - id: alarm_external_audio_watchdog
+    mode: restart
+    then:
+      - delay: 45s
+      - if:
+          condition:
+            lambda: |-
+              return id(alarm_ringing) &&
+                     id(alarm_external_audio_playing_started_ms) == 0 &&
+                     id(alarm_external_audio_retry_count) < 2;
+          then:
+            - lambda: |-
+                id(alarm_external_audio_retry_count) += 1;
+                ESP_LOGW("alarm", "External alarm audio did not reach playing within 45s; retrying alarm audio (%d/2)", id(alarm_external_audio_retry_count));
+            - script.execute: alarm_loop
+            - script.execute: start_alarm_media_on_ha
+
   - id: start_alarm_media_on_ha
     then:
+      - script.execute: alarm_external_audio_watchdog
       - lambda: |-
           ESP_LOGI("alarm", "Requesting Home Assistant alarm audio start");
       - homeassistant.action:
@@ -2885,6 +2953,9 @@ script:
       - lambda: |-
           id(next_ring_override_active) = false;
           id(next_ring_override_epoch) = 0;
+          id(alarm_external_audio_playing_started_ms) = 0;
+          id(alarm_external_audio_retry_count) = 0;
+          id(alarm_external_audio_retry_needed) = false;
           id(snooze_minutes) = 10;
           id(alarm_ringing) = true;
           id(home_menu_visible) = false;
@@ -2911,11 +2982,14 @@ script:
             ESP_LOGI("alarm", "Stopping alarm at %02d:%02d:%02d", now.hour, now.minute, now.second);
           }
           id(alarm_ringing) = false;
+          id(alarm_external_audio_playing_started_ms) = 0;
+          id(alarm_external_audio_retry_needed) = false;
           id(alarm_stop_hold_active) = false;
           id(alarm_stop_hold_from_front_button) = false;
           id(alarm_stop_hold_started_ms) = 0;
       - script.stop: alarm_loop
       - script.stop: alarm_timeout
+      - script.stop: alarm_external_audio_watchdog
       - output.turn_off: buzzer
       - script.execute: update_alarm_stop_hold_ui
       - script.execute: stop_alarm_media_on_ha
