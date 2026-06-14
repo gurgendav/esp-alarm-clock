@@ -940,6 +940,10 @@ font:
     size: 18
     glyphs: *media_glyphs
   - file: assets/DejaVuSans.ttf
+    id: media_text_font_20
+    size: 20
+    glyphs: *media_glyphs
+  - file: assets/DejaVuSans.ttf
     id: media_icon_font_28
     size: 28
     glyphs: "▶Ⅱ■»"
@@ -1497,7 +1501,7 @@ lvgl:
                   id: media_status_label
                   width: 150
                   align: CENTER
-                  y: -88
+                  y: -92
                   text_align: center
                   text_color: 0x4DD9E4
                   text_font: clock_label_font_12
@@ -1505,19 +1509,19 @@ lvgl:
                   text: "READY"
               - label:
                   id: media_title_label
-                  width: 198
+                  width: 204
                   align: CENTER
-                  y: -58
+                  y: -50
                   text_align: center
                   text_color: 0xF4F4F4
-                  text_font: media_text_font_18
+                  text_font: media_text_font_20
                   long_mode: scroll_circular
                   text: "Ready to play"
               - label:
                   id: media_artist_label
-                  width: 188
+                  width: 196
                   align: CENTER
-                  y: -28
+                  y: -16
                   text_align: center
                   text_color: 0x8E9696
                   text_font: media_text_font_14
@@ -1527,7 +1531,7 @@ lvgl:
                   id: media_sleep_label
                   width: 176
                   align: CENTER
-                  y: -4
+                  y: 10
                   text_align: center
                   text_color: 0xFFD166
                   text_font: clock_label_font_12
@@ -1535,10 +1539,10 @@ lvgl:
                   text: ""
               - bar:
                   id: media_progress_bar
-                  width: 152
+                  width: 176
                   height: 4
                   align: CENTER
-                  y: 28
+                  y: 38
                   min_value: 0
                   max_value: 100
                   value: 0
@@ -1548,12 +1552,12 @@ lvgl:
                     bg_color: 0x4DD9E4
               - button:
                   id: media_stop_button
-                  width: 56
-                  height: 34
-                  x: -66
-                  y: 70
+                  width: 60
+                  height: 36
+                  x: -72
+                  y: 78
                   align: CENTER
-                  radius: 17
+                  radius: 18
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0xFFB4AB
@@ -1578,12 +1582,12 @@ lvgl:
                         text: "Stop"
               - button:
                   id: media_play_pause_button
-                  width: 70
-                  height: 40
+                  width: 78
+                  height: 44
                   x: 0
-                  y: 70
+                  y: 78
                   align: CENTER
-                  radius: 20
+                  radius: 22
                   bg_color: 0xFFB59C
                   bg_opa: COVER
                   text_color: Black
@@ -1603,12 +1607,12 @@ lvgl:
                         text: "Play"
               - button:
                   id: media_next_button
-                  width: 56
-                  height: 34
-                  x: 66
-                  y: 70
+                  width: 60
+                  height: 36
+                  x: 72
+                  y: 78
                   align: CENTER
-                  radius: 17
+                  radius: 18
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0x4DD9E4
@@ -1629,11 +1633,11 @@ lvgl:
               - button:
                   id: media_starting_stop_button
                   hidden: true
-                  width: 112
-                  height: 42
+                  width: 118
+                  height: 44
                   align: CENTER
-                  y: 66
-                  radius: 21
+                  y: 76
+                  radius: 22
                   bg_color: 0xFFB4AB
                   bg_opa: COVER
                   text_color: Black

@@ -75,6 +75,7 @@ def test_v2_omits_bottom_nav_and_album_art_runtime_paths():
 def test_v2_media_screen_uses_clean_controls_without_album_art():
     text = read_clock()
     assert "id: media_text_font_18" in text
+    assert "id: media_text_font_20" in text
     assert "id: media_status_label" in text
     assert "id: media_sleep_label" in text
     assert "text: \"READY\"" in text
@@ -83,16 +84,18 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     assert "return \"Starting music\";" in text
     assert "return \"Tap stop to cancel\";" in text
     assert "return \"Ready to play\";" in text
-    assert "id: media_status_label\n                  width: 150\n                  align: CENTER\n                  y: -88" in text
-    assert "id: media_title_label\n                  width: 198\n                  align: CENTER\n                  y: -58" in text
-    assert "id: media_artist_label\n                  width: 188\n                  align: CENTER\n                  y: -28" in text
-    assert "id: media_progress_bar\n                  width: 152\n                  height: 4" in text
-    assert "id: media_play_pause_button\n                  width: 70\n                  height: 40" in text
+    assert "id: media_status_label\n                  width: 150\n                  align: CENTER\n                  y: -92" in text
+    assert "id: media_title_label\n                  width: 204\n                  align: CENTER\n                  y: -50" in text
+    assert "text_font: media_text_font_20" in text
+    assert "id: media_artist_label\n                  width: 196\n                  align: CENTER\n                  y: -16" in text
+    assert "id: media_sleep_label\n                  width: 176\n                  align: CENTER\n                  y: 10" in text
+    assert "id: media_progress_bar\n                  width: 176\n                  height: 4" in text
+    assert "id: media_play_pause_button\n                  width: 78\n                  height: 44" in text
     assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        text_align: center" in text
     assert "return \"Pause\";" in text
     assert "return \"Play\";" in text
-    assert "id: media_stop_button\n                  width: 56\n                  height: 34" in text
-    assert "id: media_next_button\n                  width: 56\n                  height: 34" in text
+    assert "id: media_stop_button\n                  width: 60\n                  height: 36" in text
+    assert "id: media_next_button\n                  width: 60\n                  height: 36" in text
     assert 'text: "Stop"' in text
     assert 'text: "Next"' in text
     assert "bg_color: 0x101616" in text
@@ -128,6 +131,7 @@ def test_v2_media_uses_top_volume_arc_overlay_horizontal_progress_and_rotating_t
 def test_v2_media_starting_state_is_cancel_focused():
     text = read_clock()
     assert "id: media_starting_stop_button" in text
+    assert "id: media_starting_stop_button\n                  hidden: true\n                  width: 118\n                  height: 44\n                  align: CENTER\n                  y: 76" in text
     assert "lvgl.widget.hide: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]" in text
     assert "lvgl.widget.show: media_starting_stop_button" in text
     assert "lvgl.widget.hide: media_starting_stop_button" in text
