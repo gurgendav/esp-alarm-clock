@@ -18,14 +18,18 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace alarmv1::screenshot {
 
 static const char *const TAG = "alarmv1_screenshot";
 constexpr const char *SCREENSHOT_PATH = "/alarmv1/screenshot.bmp";
+constexpr const char *OPEN_MEDIA_PATH = "/alarmv1/open-media";
+constexpr const char *OPEN_CLOCK_PATH = "/alarmv1/open-clock";
 constexpr uint16_t ALARMV1_SCREENSHOT_BAND_ROWS = 8;
 
 struct CaptureResult {
@@ -36,6 +40,19 @@ struct CaptureResult {
 
   CaptureResult() { this->done = xSemaphoreCreateBinary(); }
   ~CaptureResult() {
+    if (this->done != nullptr) {
+      vSemaphoreDelete(this->done);
+    }
+  }
+};
+
+struct NavigationResult {
+  SemaphoreHandle_t done{nullptr};
+  bool ok{false};
+  std::string error{};
+
+  NavigationResult() { this->done = xSemaphoreCreateBinary(); }
+  ~NavigationResult() {
     if (this->done != nullptr) {
       vSemaphoreDelete(this->done);
     }
@@ -249,16 +266,44 @@ inline void capture_lvgl_screen_(AsyncWebServerRequest *request, esphome::lvgl::
   xSemaphoreGive(result->done);
 }
 
+inline void execute_navigation_(const std::function<void()> &action, const char *name, NavigationResult *result) {
+  if (!action) {
+    result->error = "AlarmV1 navigation action is not configured";
+    xSemaphoreGive(result->done);
+    return;
+  }
+  action();
+  result->ok = true;
+  ESP_LOGI(TAG, "AlarmV1 navigation executed: %s", name);
+  xSemaphoreGive(result->done);
+}
+
 class AlarmV1ScreenshotHandler : public AsyncWebHandler {
  public:
-  explicit AlarmV1ScreenshotHandler(esphome::lvgl::LvglComponent *lvgl) : lvgl_(lvgl) {}
+  AlarmV1ScreenshotHandler(esphome::lvgl::LvglComponent *lvgl, std::function<void()> open_media,
+                           std::function<void()> open_clock)
+      : lvgl_(lvgl), open_media_(std::move(open_media)), open_clock_(std::move(open_clock)) {}
 
   bool canHandle(AsyncWebServerRequest *request) const override {
     char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
-    return request->method() == HTTP_GET && request->url_to(url_buffer) == SCREENSHOT_PATH;
+    const auto url = request->url_to(url_buffer);
+    return request->method() == HTTP_GET &&
+           (url == SCREENSHOT_PATH || request->url_to(url_buffer) == OPEN_MEDIA_PATH ||
+            request->url_to(url_buffer) == OPEN_CLOCK_PATH);
   }
 
   void handleRequest(AsyncWebServerRequest *request) override {
+    char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
+    const auto url = request->url_to(url_buffer);
+    if (url == OPEN_MEDIA_PATH) {
+      this->handle_navigation_request_(request, "open-media", this->open_media_);
+      return;
+    }
+    if (url == OPEN_CLOCK_PATH) {
+      this->handle_navigation_request_(request, "open-clock", this->open_clock_);
+      return;
+    }
+
     auto result = std::make_shared<CaptureResult>();
     if (result->done == nullptr) {
       request->send(503, "text/plain", "Could not allocate screenshot synchronization primitive");
@@ -285,10 +330,40 @@ class AlarmV1ScreenshotHandler : public AsyncWebHandler {
   }
 
  protected:
+  void handle_navigation_request_(AsyncWebServerRequest *request, const char *name,
+                                  const std::function<void()> &action) {
+    auto result = std::make_shared<NavigationResult>();
+    if (result->done == nullptr) {
+      request->send(503, "text/plain", "Could not allocate navigation synchronization primitive");
+      return;
+    }
+
+    esphome::App.scheduler.set_timeout(this->lvgl_, "alarmv1_screenshot_navigation", 0,
+                                      [action, name, result]() { execute_navigation_(action, name, result.get()); });
+
+    if (xSemaphoreTake(result->done, pdMS_TO_TICKS(2000)) != pdTRUE) {
+      request->send(504, "text/plain", "Timed out waiting for AlarmV1 navigation");
+      return;
+    }
+
+    if (!result->ok) {
+      const std::string message = result->error.empty() ? "AlarmV1 navigation failed" : result->error;
+      request->send(503, "text/plain", message.c_str());
+      return;
+    }
+
+    std::string message = "OK ";
+    message += name;
+    request->send(200, "text/plain", message.c_str());
+  }
+
   esphome::lvgl::LvglComponent *lvgl_;
+  std::function<void()> open_media_;
+  std::function<void()> open_clock_;
 };
 
-inline void register_alarmv1_screenshot_endpoint(esphome::lvgl::LvglComponent *lvgl) {
+inline void register_alarmv1_screenshot_endpoint(esphome::lvgl::LvglComponent *lvgl, std::function<void()> open_media,
+                                                 std::function<void()> open_clock) {
   static bool registered = false;
   if (registered) {
     return;
@@ -298,9 +373,10 @@ inline void register_alarmv1_screenshot_endpoint(esphome::lvgl::LvglComponent *l
     ESP_LOGW(TAG, "Web server base is not available; screenshot endpoint was not registered");
     return;
   }
-  base->add_handler(new AlarmV1ScreenshotHandler(lvgl));
+  base->add_handler(new AlarmV1ScreenshotHandler(lvgl, std::move(open_media), std::move(open_clock)));
   registered = true;
-  ESP_LOGI(TAG, "Registered AlarmV1 screenshot endpoint at %s", SCREENSHOT_PATH);
+  ESP_LOGI(TAG, "Registered AlarmV1 screenshot endpoint at %s with navigation endpoints %s and %s", SCREENSHOT_PATH,
+           OPEN_MEDIA_PATH, OPEN_CLOCK_PATH);
 }
 
 }  // namespace alarmv1::screenshot

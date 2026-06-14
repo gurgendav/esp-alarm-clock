@@ -299,7 +299,20 @@ def test_v2_real_screenshot_endpoint_is_registered():
     assert "CONFIG_LV_USE_SNAPSHOT: y" in text
     assert "- -DLV_USE_SNAPSHOT=1" in text
     assert "id: alarmv1_lvgl" in text
-    assert "alarmv1::screenshot::register_alarmv1_screenshot_endpoint(id(alarmv1_lvgl));" in text
+    assert "alarmv1::screenshot::register_alarmv1_screenshot_endpoint(" in text
+    assert "id(open_media_screen).execute();" in text
+    assert "id(close_media_screen).execute();" in text
+
+
+def test_v2_screenshot_endpoint_can_navigate_to_media_or_clock():
+    header = (ROOT / "alarmv1_screenshot.h").read_text(encoding="utf-8")
+    assert "constexpr const char *OPEN_MEDIA_PATH = \"/alarmv1/open-media\";" in header
+    assert "constexpr const char *OPEN_CLOCK_PATH = \"/alarmv1/open-clock\";" in header
+    assert "request->url_to(url_buffer) == OPEN_MEDIA_PATH" in header
+    assert "request->url_to(url_buffer) == OPEN_CLOCK_PATH" in header
+    assert "handle_navigation_request_(request, \"open-media\", this->open_media_)" in header
+    assert "handle_navigation_request_(request, \"open-clock\", this->open_clock_)" in header
+    assert "AlarmV1 navigation executed" in header
 
 
 def test_v2_real_screenshot_endpoint_streams_lvgl_bmp():

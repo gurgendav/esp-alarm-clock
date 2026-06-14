@@ -24,7 +24,8 @@ esphome:
     then:
       - lambda: |-
           ESP_LOGI("boot", "boot step 1: on_boot started");
-          alarmv1::screenshot::register_alarmv1_screenshot_endpoint(id(alarmv1_lvgl));
+          alarmv1::screenshot::register_alarmv1_screenshot_endpoint(
+              id(alarmv1_lvgl), []() { id(open_media_screen).execute(); }, []() { id(close_media_screen).execute(); });
       - output.set_max_power:
           id: buzzer
           max_power: 100%
