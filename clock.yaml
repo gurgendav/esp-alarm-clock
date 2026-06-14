@@ -1023,10 +1023,10 @@ lvgl:
             align: CENTER
             y: 50
             text_align: center
-            text_color: 0xF4F4F4
-            text_font: clock_body_font_16
+            text_color: 0x4DD9E4
+            text_font: clock_body_font_18
             long_mode: dot
-            text: "Next Ring: --:--"
+            text: "Ring: --:--"
         - label:
             id: clock_countdown_label
             width: 180
@@ -2765,7 +2765,7 @@ script:
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return lv_color_hex(0xFFB4AB);
             }
-            return lv_color_hex(0xF4F4F4);
+            return lv_color_hex(0x4DD9E4);
       - lvgl.label.update:
           id: clock_next_label
           text: !lambda |-
@@ -2809,7 +2809,19 @@ script:
               day_delta += 366;
             }
             const char *day_text = day_delta == 0 ? "Today" : (day_delta == 1 ? "Tomorrow" : day_names[next_alarm.day_of_week - 1]);
-            snprintf(next_buf, sizeof(next_buf), "Next Ring: %s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);
+            const int32_t seconds_until_alarm = int32_t(id(next_alarm_epoch)) - int32_t(now.timestamp);
+            if (seconds_until_alarm > 0 && seconds_until_alarm <= (8 * 3600)) {
+              const int total_minutes = (seconds_until_alarm + 59) / 60;
+              const int hours = total_minutes / 60;
+              const int minutes = total_minutes % 60;
+              if (hours > 0) {
+                snprintf(next_buf, sizeof(next_buf), "Ring in %dh %dm", hours, minutes);
+              } else {
+                snprintf(next_buf, sizeof(next_buf), "Ring in %dm", minutes);
+              }
+              return next_buf;
+            }
+            snprintf(next_buf, sizeof(next_buf), "Ring: %s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);
             return next_buf;
       - lvgl.label.update:
           id: clock_countdown_label
@@ -2839,9 +2851,14 @@ script:
               snprintf(countdown_buf, sizeof(countdown_buf), "");
               return countdown_buf;
             }
-            const int hours = seconds_until_alarm / 3600;
-            const int minutes = (seconds_until_alarm % 3600) / 60;
-            snprintf(countdown_buf, sizeof(countdown_buf), "%dh %dm", hours, minutes);
+            static const char *const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+            auto next_alarm = ESPTime::from_epoch_local(id(next_alarm_epoch));
+            int day_delta = next_alarm.day_of_year - now.day_of_year;
+            if (day_delta < 0) {
+              day_delta += 366;
+            }
+            const char *day_text = day_delta == 0 ? "Today" : (day_delta == 1 ? "Tomorrow" : day_names[next_alarm.day_of_week - 1]);
+            snprintf(countdown_buf, sizeof(countdown_buf), "%s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);
             return countdown_buf;
       - if:
           condition:

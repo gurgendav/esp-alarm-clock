@@ -46,6 +46,17 @@ def test_v2_skip_resume_layout_stays_inside_round_screen():
     assert "shadow_width: 0\n            pad_all: 0" in text
 
 
+def test_v2_main_ring_copy_prioritizes_visible_countdown_and_short_date():
+    text = read_clock()
+    assert 'text: "Ring: --:--"' in text
+    assert "text_font: clock_body_font_18" in text
+    assert "return lv_color_hex(0x4DD9E4);" in text  # visible normal ring countdown accent
+    assert 'snprintf(next_buf, sizeof(next_buf), "Ring in %dh %dm", hours, minutes);' in text
+    assert 'snprintf(next_buf, sizeof(next_buf), "Ring: %s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);' in text
+    assert 'snprintf(countdown_buf, sizeof(countdown_buf), "%s %02d:%02d", day_text, next_alarm.hour, next_alarm.minute);' in text
+    assert "Next Ring:" not in text
+
+
 def test_v2_omits_bottom_nav_and_album_art_runtime_paths():
     text = read_clock()
     forbidden = [
