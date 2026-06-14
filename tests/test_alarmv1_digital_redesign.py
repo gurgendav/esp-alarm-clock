@@ -76,6 +76,7 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     text = read_clock()
     assert "id: media_text_font_18" in text
     assert "id: media_text_font_20" in text
+    assert "media_icon_font_28" not in text
     assert "id: media_status_label" in text
     assert "id: media_sleep_label" in text
     assert "text: \"READY\"" in text
@@ -91,15 +92,19 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     assert "id: media_sleep_label\n                  width: 176\n                  align: CENTER\n                  y: 4" in text
     assert "id: media_progress_bar\n                  width: 176\n                  height: 4" in text
     assert "id: media_progress_bar\n                  width: 176\n                  height: 4\n                  align: CENTER\n                  y: 24" in text
-    assert "id: media_play_pause_button\n                  width: 96\n                  height: 40\n                  x: 0\n                  y: 88" in text
-    assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        text_align: center" in text
-    assert "return \"Pause\";" in text
-    assert "return \"Play\";" in text
-    assert "id: media_stop_button\n                  width: 68\n                  height: 34\n                  x: -42\n                  y: 56" in text
-    assert "id: media_next_button\n                  width: 68\n                  height: 34\n                  x: 42\n                  y: 56" in text
-    assert 'text: "Stop"' in text
-    assert 'text: "Next"' in text
-    assert "bg_color: 0x101616" in text
+    assert "id: media_control_dock\n                  width: 168\n                  height: 72\n                  align: CENTER\n                  y: 64" in text
+    assert "id: media_stop_button\n                        width: 52\n                        height: 64\n                        x: -54\n                        y: 0" in text
+    assert "id: media_play_pause_button\n                        width: 52\n                        height: 52\n                        x: 0\n                        y: 0" in text
+    assert "id: media_next_button\n                        width: 52\n                        height: 64\n                        x: 54\n                        y: 0" in text
+    assert "id: media_stop_icon\n                              width: 14\n                              height: 14" in text
+    assert "id: media_pause_icon_group\n                              width: 30\n                              height: 24" in text
+    assert "id: media_play_icon\n                              hidden: true\n                              width: 24\n                              height: 24" in text
+    assert "id: media_next_icon_group\n                              width: 30\n                              height: 22" in text
+    assert 'points: ["4,3", "4,21", "20,12", "4,3"]' in text
+    assert 'points: ["2,3", "12,11", "2,19"]' in text
+    assert 'text: "Stop"' not in text
+    assert 'text: "Next"' not in text
+    assert "media_play_pause_icon_label" not in text
 
 
 def test_v2_media_uses_top_volume_arc_overlay_horizontal_progress_and_rotating_title():
@@ -133,8 +138,9 @@ def test_v2_media_starting_state_is_cancel_focused():
     text = read_clock()
     assert "id: media_starting_stop_button" in text
     assert "id: media_starting_stop_button\n                  hidden: true\n                  width: 118\n                  height: 44\n                  align: CENTER\n                  y: 76" in text
-    assert "lvgl.widget.hide: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]" in text
+    assert "lvgl.widget.hide: [media_control_dock, media_progress_bar]" in text
     assert "lvgl.widget.show: media_starting_stop_button" in text
+    assert "lvgl.widget.show: [media_control_dock, media_progress_bar]" in text
     assert "lvgl.widget.hide: media_starting_stop_button" in text
 
 

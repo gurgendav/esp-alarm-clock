@@ -944,10 +944,6 @@ font:
     id: media_text_font_20
     size: 20
     glyphs: *media_glyphs
-  - file: assets/DejaVuSans.ttf
-    id: media_icon_font_28
-    size: 28
-    glyphs: "▶Ⅱ■»"
 
 lvgl:
   id: alarmv1_lvgl
@@ -1551,86 +1547,174 @@ lvgl:
                   bg_color: 0x243030
                   indicator:
                     bg_color: 0x4DD9E4
-              - button:
-                  id: media_stop_button
-                  width: 68
-                  height: 34
-                  x: -42
-                  y: 56
+              - obj:
+                  id: media_control_dock
+                  width: 168
+                  height: 72
                   align: CENTER
-                  radius: 17
-                  bg_color: 0x101616
+                  y: 64
+                  radius: 30
+                  bg_color: 0x10171A
                   bg_opa: COVER
-                  text_color: 0xFFB4AB
-                  border_width: 1
-                  border_color: 0x3A2522
-                  shadow_width: 0
-                  on_click:
-                    then:
-                      - script.execute: close_media_screen
-                      - script.execute: reset_idle_timer
-                      - script.execute: stop_morning_music_on_ha
-                  on_long_press:
-                    then:
-                      - script.execute: cycle_media_sleep_timer
-                      - script.execute: reset_idle_timer
-                  widgets:
-                    - label:
-                        align: CENTER
-                        text_align: center
-                        text_color: 0xFFB4AB
-                        text_font: clock_label_font_12
-                        text: "Stop"
-              - button:
-                  id: media_play_pause_button
-                  width: 96
-                  height: 40
-                  x: 0
-                  y: 88
-                  align: CENTER
-                  radius: 20
-                  bg_color: 0xFFB59C
-                  bg_opa: COVER
-                  text_color: Black
                   border_width: 0
                   shadow_width: 0
-                  on_click:
-                    then:
-                      - script.execute: media_play_pause_on_ha
-                      - script.execute: reset_idle_timer
+                  pad_all: 0
                   widgets:
-                    - label:
-                        id: media_play_pause_icon_label
+                    - button:
+                        id: media_stop_button
+                        width: 52
+                        height: 64
+                        x: -54
+                        y: 0
                         align: CENTER
-                        text_align: center
-                        text_color: Black
-                        text_font: clock_label_font_12
-                        text: "Play"
-              - button:
-                  id: media_next_button
-                  width: 68
-                  height: 34
-                  x: 42
-                  y: 56
-                  align: CENTER
-                  radius: 17
-                  bg_color: 0x101616
-                  bg_opa: COVER
-                  text_color: 0x4DD9E4
-                  border_width: 1
-                  border_color: 0x21464A
-                  shadow_width: 0
-                  on_click:
-                    then:
-                      - script.execute: handle_media_next_button_click
-                      - script.execute: reset_idle_timer
-                  widgets:
-                    - label:
+                        radius: 26
+                        bg_opa: TRANSP
+                        border_width: 0
+                        shadow_width: 0
+                        pad_all: 0
+                        on_click:
+                          then:
+                            - script.execute: close_media_screen
+                            - script.execute: reset_idle_timer
+                            - script.execute: stop_morning_music_on_ha
+                        on_long_press:
+                          then:
+                            - script.execute: cycle_media_sleep_timer
+                            - script.execute: reset_idle_timer
+                        widgets:
+                          - obj:
+                              id: media_stop_icon
+                              width: 14
+                              height: 14
+                              align: CENTER
+                              radius: 1
+                              bg_color: 0x8F999C
+                              bg_opa: COVER
+                              border_width: 0
+                              shadow_width: 0
+                              pad_all: 0
+                    - button:
+                        id: media_play_pause_button
+                        width: 52
+                        height: 52
+                        x: 0
+                        y: 0
                         align: CENTER
-                        text_align: center
-                        text_color: 0x4DD9E4
-                        text_font: clock_label_font_12
-                        text: "Next"
+                        radius: 26
+                        bg_color: 0xFFB59C
+                        bg_opa: COVER
+                        border_width: 0
+                        shadow_width: 0
+                        pad_all: 0
+                        on_click:
+                          then:
+                            - script.execute: media_play_pause_on_ha
+                            - script.execute: reset_idle_timer
+                        widgets:
+                          - obj:
+                              id: media_pause_icon_group
+                              width: 30
+                              height: 24
+                              align: CENTER
+                              bg_opa: TRANSP
+                              border_width: 0
+                              shadow_width: 0
+                              pad_all: 0
+                              widgets:
+                                - obj:
+                                    id: media_pause_bar_left
+                                    width: 6
+                                    height: 22
+                                    x: -6
+                                    y: 0
+                                    align: CENTER
+                                    radius: 2
+                                    bg_color: Black
+                                    bg_opa: COVER
+                                    border_width: 0
+                                    shadow_width: 0
+                                    pad_all: 0
+                                - obj:
+                                    id: media_pause_bar_right
+                                    width: 6
+                                    height: 22
+                                    x: 6
+                                    y: 0
+                                    align: CENTER
+                                    radius: 2
+                                    bg_color: Black
+                                    bg_opa: COVER
+                                    border_width: 0
+                                    shadow_width: 0
+                                    pad_all: 0
+                          - line:
+                              id: media_play_icon
+                              hidden: true
+                              width: 24
+                              height: 24
+                              align: CENTER
+                              line_color: Black
+                              line_width: 4
+                              line_rounded: true
+                              points: ["4,3", "4,21", "20,12", "4,3"]
+                    - button:
+                        id: media_next_button
+                        width: 52
+                        height: 64
+                        x: 54
+                        y: 0
+                        align: CENTER
+                        radius: 26
+                        bg_opa: TRANSP
+                        border_width: 0
+                        shadow_width: 0
+                        pad_all: 0
+                        on_click:
+                          then:
+                            - script.execute: handle_media_next_button_click
+                            - script.execute: reset_idle_timer
+                        widgets:
+                          - obj:
+                              id: media_next_icon_group
+                              width: 30
+                              height: 22
+                              align: CENTER
+                              bg_opa: TRANSP
+                              border_width: 0
+                              shadow_width: 0
+                              pad_all: 0
+                              widgets:
+                                - line:
+                                    id: media_next_chevron_left
+                                    width: 30
+                                    height: 22
+                                    align: CENTER
+                                    line_color: 0x8F999C
+                                    line_width: 4
+                                    line_rounded: true
+                                    points: ["2,3", "12,11", "2,19"]
+                                - line:
+                                    id: media_next_chevron_right
+                                    width: 30
+                                    height: 22
+                                    align: CENTER
+                                    line_color: 0x8F999C
+                                    line_width: 4
+                                    line_rounded: true
+                                    points: ["14,3", "24,11", "14,19"]
+                                - obj:
+                                    id: media_next_bar
+                                    width: 3
+                                    height: 18
+                                    x: 13
+                                    y: 0
+                                    align: CENTER
+                                    radius: 1
+                                    bg_color: 0x8F999C
+                                    bg_opa: COVER
+                                    border_width: 0
+                                    shadow_width: 0
+                                    pad_all: 0
               - button:
                   id: media_starting_stop_button
                   hidden: true
@@ -2595,22 +2679,25 @@ script:
               return "PAUSED";
             }
             return "READY";
-      - lvgl.label.update:
-          id: media_play_pause_icon_label
-          text: !lambda |-
-            if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
-              return "Pause";
-            }
-            return "Play";
+      - if:
+          condition:
+            lambda: |-
+              return id(media_player_state).has_state() && id(media_player_state).state == "playing";
+          then:
+            - lvgl.widget.show: media_pause_icon_group
+            - lvgl.widget.hide: media_play_icon
+          else:
+            - lvgl.widget.hide: media_pause_icon_group
+            - lvgl.widget.show: media_play_icon
       - if:
           condition:
             lambda: |-
               return id(morning_music_start_pending);
           then:
-            - lvgl.widget.hide: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]
+            - lvgl.widget.hide: [media_control_dock, media_progress_bar]
             - lvgl.widget.show: media_starting_stop_button
           else:
-            - lvgl.widget.show: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]
+            - lvgl.widget.show: [media_control_dock, media_progress_bar]
             - lvgl.widget.hide: media_starting_stop_button
       - lvgl.label.update:
           id: media_title_label
