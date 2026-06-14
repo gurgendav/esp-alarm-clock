@@ -1497,7 +1497,7 @@ lvgl:
                   id: media_status_label
                   width: 150
                   align: CENTER
-                  y: -94
+                  y: -88
                   text_align: center
                   text_color: 0x4DD9E4
                   text_font: clock_label_font_12
@@ -1505,9 +1505,9 @@ lvgl:
                   text: "READY"
               - label:
                   id: media_title_label
-                  width: 188
+                  width: 198
                   align: CENTER
-                  y: -62
+                  y: -58
                   text_align: center
                   text_color: 0xF4F4F4
                   text_font: media_text_font_18
@@ -1517,7 +1517,7 @@ lvgl:
                   id: media_artist_label
                   width: 188
                   align: CENTER
-                  y: -34
+                  y: -28
                   text_align: center
                   text_color: 0x8E9696
                   text_font: media_text_font_14
@@ -1527,7 +1527,7 @@ lvgl:
                   id: media_sleep_label
                   width: 176
                   align: CENTER
-                  y: -10
+                  y: -4
                   text_align: center
                   text_color: 0xFFD166
                   text_font: clock_label_font_12
@@ -1535,10 +1535,10 @@ lvgl:
                   text: ""
               - bar:
                   id: media_progress_bar
-                  width: 144
-                  height: 5
+                  width: 152
+                  height: 4
                   align: CENTER
-                  y: 18
+                  y: 28
                   min_value: 0
                   max_value: 100
                   value: 0
@@ -1548,12 +1548,12 @@ lvgl:
                     bg_color: 0x4DD9E4
               - button:
                   id: media_stop_button
-                  width: 58
-                  height: 36
+                  width: 56
+                  height: 34
                   x: -66
-                  y: 64
+                  y: 70
                   align: CENTER
-                  radius: 18
+                  radius: 17
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0xFFB4AB
@@ -1578,12 +1578,12 @@ lvgl:
                         text: "Stop"
               - button:
                   id: media_play_pause_button
-                  width: 72
-                  height: 44
+                  width: 70
+                  height: 40
                   x: 0
-                  y: 64
+                  y: 70
                   align: CENTER
-                  radius: 22
+                  radius: 20
                   bg_color: 0xFFB59C
                   bg_opa: COVER
                   text_color: Black
@@ -1603,12 +1603,12 @@ lvgl:
                         text: "Play"
               - button:
                   id: media_next_button
-                  width: 58
-                  height: 36
+                  width: 56
+                  height: 34
                   x: 66
-                  y: 64
+                  y: 70
                   align: CENTER
-                  radius: 18
+                  radius: 17
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0x4DD9E4
@@ -1632,7 +1632,7 @@ lvgl:
                   width: 112
                   height: 42
                   align: CENTER
-                  y: 58
+                  y: 66
                   radius: 21
                   bg_color: 0xFFB4AB
                   bg_opa: COVER
@@ -1657,25 +1657,24 @@ lvgl:
                   width: 214
                   height: 214
                   align: CENTER
-                  y: -6
+                  y: -4
                   value: 50
                   min_value: 0
                   max_value: 100
-                  start_angle: 218
-                  end_angle: 322
+                  start_angle: 220
+                  end_angle: 320
                   adjustable: false
-                  arc_width: 7
-                  arc_color: 0xFFB59C
-              - label:
-                  id: media_volume_label
-                  hidden: true
-                  width: 82
-                  align: TOP_MID
-                  y: 14
-                  text_align: center
-                  text_color: 0xFFB59C
-                  text_font: clock_label_font_12
-                  text: "VOL 50"
+                  arc_width: 6
+                  arc_color: 0x18383B
+                  arc_rounded: true
+                  indicator:
+                    arc_width: 6
+                    arc_color: 0x4DD9E4
+                    arc_rounded: true
+                  knob:
+                    bg_opa: TRANSP
+                    border_width: 0
+                    pad_all: -3
 
 interval:
   - interval: 250ms
@@ -2528,7 +2527,7 @@ script:
     then:
       - lambda: |-
           id(media_volume_overlay_until_ms) = millis() + 1500;
-      - lvgl.widget.show: [media_volume_arc, media_volume_label]
+      - lvgl.widget.show: media_volume_arc
       - script.execute: update_media_screen_ui
 
   - id: update_media_screen_ui
@@ -2538,21 +2537,18 @@ script:
           value: !lambda |-
             return int(id(media_volume_level) * 100.0f + 0.5f);
           arc_color: !lambda |-
-            return lv_color_hex(0xFFB59C);
+            return lv_color_hex(0x18383B);
+          indicator:
+            arc_color: !lambda |-
+              return lv_color_hex(0x4DD9E4);
       - if:
           condition:
             lambda: |-
               return id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0;
           then:
-            - lvgl.widget.show: [media_volume_arc, media_volume_label]
+            - lvgl.widget.show: media_volume_arc
           else:
-            - lvgl.widget.hide: [media_volume_arc, media_volume_label]
-      - lvgl.label.update:
-          id: media_volume_label
-          text: !lambda |-
-            static char volume_buf[16];
-            snprintf(volume_buf, sizeof(volume_buf), "VOL %d", int(id(media_volume_level) * 100.0f + 0.5f));
-            return volume_buf;
+            - lvgl.widget.hide: media_volume_arc
       - lvgl.bar.update:
           id: media_progress_bar
           value: !lambda |-

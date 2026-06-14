@@ -83,12 +83,16 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     assert "return \"Starting music\";" in text
     assert "return \"Tap stop to cancel\";" in text
     assert "return \"Ready to play\";" in text
-    assert "id: media_play_pause_button\n                  width: 72\n                  height: 44" in text
+    assert "id: media_status_label\n                  width: 150\n                  align: CENTER\n                  y: -88" in text
+    assert "id: media_title_label\n                  width: 198\n                  align: CENTER\n                  y: -58" in text
+    assert "id: media_artist_label\n                  width: 188\n                  align: CENTER\n                  y: -28" in text
+    assert "id: media_progress_bar\n                  width: 152\n                  height: 4" in text
+    assert "id: media_play_pause_button\n                  width: 70\n                  height: 40" in text
     assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        text_align: center" in text
     assert "return \"Pause\";" in text
     assert "return \"Play\";" in text
-    assert "id: media_stop_button\n                  width: 58\n                  height: 36" in text
-    assert "id: media_next_button\n                  width: 58\n                  height: 36" in text
+    assert "id: media_stop_button\n                  width: 56\n                  height: 34" in text
+    assert "id: media_next_button\n                  width: 56\n                  height: 34" in text
     assert 'text: "Stop"' in text
     assert 'text: "Next"' in text
     assert "bg_color: 0x101616" in text
@@ -102,16 +106,21 @@ def test_v2_media_uses_top_volume_arc_overlay_horizontal_progress_and_rotating_t
     assert "attribute: media_duration" in text
     assert "id: media_progress_bar" in text
     assert "lvgl.bar.update:\n          id: media_progress_bar" in text
-    assert "id: media_volume_arc\n                  hidden: true\n                  width: 214\n                  height: 214\n                  align: CENTER\n                  y: -6" in text
-    assert "start_angle: 218" in text
-    assert "end_angle: 322" in text
-    assert "id: media_volume_label" in text
-    assert "VOL %d" in text
-    assert "lvgl.widget.show: [media_volume_arc, media_volume_label]" in text
-    assert "lvgl.widget.hide: [media_volume_arc, media_volume_label]" in text
+    assert "id: media_volume_arc\n                  hidden: true\n                  width: 214\n                  height: 214\n                  align: CENTER\n                  y: -4" in text
+    assert "start_angle: 220" in text
+    assert "end_angle: 320" in text
+    assert "arc_width: 6" in text
+    assert "arc_rounded: true" in text
+    assert "arc_color: 0x18383B" in text
+    assert "indicator:\n                    arc_width: 6\n                    arc_color: 0x4DD9E4" in text
+    assert "knob:\n                    bg_opa: TRANSP" in text
+    assert "media_volume_label" not in text
+    assert "VOL" not in text
+    assert "lvgl.widget.show: media_volume_arc" in text
+    assert "lvgl.widget.hide: media_volume_arc" in text
     assert "long_mode: scroll_circular" in text
     assert "id(media_position_updated_ms) = millis();" in text
-    assert "return lv_color_hex(0xFFB59C);" in text  # volume/primary color
+    assert "return lv_color_hex(0x4DD9E4);" in text  # volume/progress color
     assert "bg_color: 0x4DD9E4" in text  # progress/status color
     assert "bg_color: 0x243030" in text  # inactive progress bar
 
