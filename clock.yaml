@@ -1493,20 +1493,6 @@ lvgl:
             pad_all: 0
             border_width: 0
             widgets:
-              - arc:
-                  id: media_volume_arc
-                  hidden: true
-                  width: 226
-                  height: 226
-                  align: CENTER
-                  value: 50
-                  min_value: 0
-                  max_value: 100
-                  start_angle: 128
-                  end_angle: 232
-                  adjustable: false
-                  arc_width: 8
-                  arc_color: 0xFFB59C
               - label:
                   id: media_status_label
                   width: 150
@@ -1562,12 +1548,12 @@ lvgl:
                     bg_color: 0x4DD9E4
               - button:
                   id: media_stop_button
-                  width: 48
-                  height: 48
-                  x: -62
+                  width: 58
+                  height: 36
+                  x: -66
                   y: 64
                   align: CENTER
-                  radius: 24
+                  radius: 18
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0xFFB4AB
@@ -1585,21 +1571,19 @@ lvgl:
                       - script.execute: reset_idle_timer
                   widgets:
                     - label:
-                        width: 100%
-                        height: 100%
                         align: CENTER
                         text_align: center
                         text_color: 0xFFB4AB
-                        text_font: media_icon_font_28
-                        text: "■"
+                        text_font: clock_label_font_12
+                        text: "Stop"
               - button:
                   id: media_play_pause_button
-                  width: 62
-                  height: 62
+                  width: 72
+                  height: 44
                   x: 0
                   y: 64
                   align: CENTER
-                  radius: 31
+                  radius: 22
                   bg_color: 0xFFB59C
                   bg_opa: COVER
                   text_color: Black
@@ -1613,20 +1597,18 @@ lvgl:
                     - label:
                         id: media_play_pause_icon_label
                         align: CENTER
-                        x: 2
-                        y: 1
                         text_align: center
                         text_color: Black
-                        text_font: media_icon_font_28
-                        text: "▶"
+                        text_font: clock_label_font_12
+                        text: "Play"
               - button:
                   id: media_next_button
-                  width: 48
-                  height: 48
-                  x: 62
+                  width: 58
+                  height: 36
+                  x: 66
                   y: 64
                   align: CENTER
-                  radius: 24
+                  radius: 18
                   bg_color: 0x101616
                   bg_opa: COVER
                   text_color: 0x4DD9E4
@@ -1639,13 +1621,61 @@ lvgl:
                       - script.execute: reset_idle_timer
                   widgets:
                     - label:
-                        width: 100%
-                        height: 100%
                         align: CENTER
                         text_align: center
                         text_color: 0x4DD9E4
-                        text_font: media_icon_font_28
-                        text: "»"
+                        text_font: clock_label_font_12
+                        text: "Next"
+              - button:
+                  id: media_starting_stop_button
+                  hidden: true
+                  width: 112
+                  height: 42
+                  align: CENTER
+                  y: 58
+                  radius: 21
+                  bg_color: 0xFFB4AB
+                  bg_opa: COVER
+                  text_color: Black
+                  border_width: 0
+                  shadow_width: 0
+                  on_click:
+                    then:
+                      - script.execute: close_media_screen
+                      - script.execute: reset_idle_timer
+                      - script.execute: stop_morning_music_on_ha
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_align: center
+                        text_color: Black
+                        text_font: clock_body_font_16
+                        text: "STOP"
+              - arc:
+                  id: media_volume_arc
+                  hidden: true
+                  width: 214
+                  height: 214
+                  align: CENTER
+                  y: -6
+                  value: 50
+                  min_value: 0
+                  max_value: 100
+                  start_angle: 218
+                  end_angle: 322
+                  adjustable: false
+                  arc_width: 7
+                  arc_color: 0xFFB59C
+              - label:
+                  id: media_volume_label
+                  hidden: true
+                  width: 82
+                  align: TOP_MID
+                  y: 14
+                  text_align: center
+                  text_color: 0xFFB59C
+                  text_font: clock_label_font_12
+                  text: "VOL 50"
 
 interval:
   - interval: 250ms
@@ -2498,7 +2528,7 @@ script:
     then:
       - lambda: |-
           id(media_volume_overlay_until_ms) = millis() + 1500;
-      - lvgl.widget.show: media_volume_arc
+      - lvgl.widget.show: [media_volume_arc, media_volume_label]
       - script.execute: update_media_screen_ui
 
   - id: update_media_screen_ui
@@ -2514,9 +2544,15 @@ script:
             lambda: |-
               return id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0;
           then:
-            - lvgl.widget.show: media_volume_arc
+            - lvgl.widget.show: [media_volume_arc, media_volume_label]
           else:
-            - lvgl.widget.hide: media_volume_arc
+            - lvgl.widget.hide: [media_volume_arc, media_volume_label]
+      - lvgl.label.update:
+          id: media_volume_label
+          text: !lambda |-
+            static char volume_buf[16];
+            snprintf(volume_buf, sizeof(volume_buf), "VOL %d", int(id(media_volume_level) * 100.0f + 0.5f));
+            return volume_buf;
       - lvgl.bar.update:
           id: media_progress_bar
           value: !lambda |-
@@ -2562,17 +2598,19 @@ script:
           id: media_play_pause_icon_label
           text: !lambda |-
             if (id(media_player_state).has_state() && id(media_player_state).state == "playing") {
-              return "Ⅱ";
+              return "Pause";
             }
-            return "▶";
+            return "Play";
       - if:
           condition:
             lambda: |-
               return id(morning_music_start_pending);
           then:
-            - lvgl.widget.hide: [media_play_pause_button, media_next_button]
+            - lvgl.widget.hide: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]
+            - lvgl.widget.show: media_starting_stop_button
           else:
-            - lvgl.widget.show: [media_play_pause_button, media_next_button]
+            - lvgl.widget.show: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]
+            - lvgl.widget.hide: media_starting_stop_button
       - lvgl.label.update:
           id: media_title_label
           text: !lambda |-
