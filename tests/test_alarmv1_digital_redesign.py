@@ -236,11 +236,14 @@ def test_v2_real_screenshot_endpoint_is_registered():
 def test_v2_real_screenshot_endpoint_streams_lvgl_bmp():
     header = (ROOT / "alarmv1_screenshot.h").read_text(encoding="utf-8")
     assert "constexpr const char *SCREENSHOT_PATH = \"/alarmv1/screenshot.bmp\";" in header
-    assert "lv_snapshot_take" in header
+    assert "constexpr uint16_t ALARMV1_SCREENSHOT_BAND_ROWS" in header
+    assert "lv_draw_buf_create(width, ALARMV1_SCREENSHOT_BAND_ROWS, LV_COLOR_FORMAT_RGB565" in header
+    assert "lv_obj_redraw(&layer, screen);" in header
     assert "LV_COLOR_FORMAT_RGB565" in header
     assert "image/bmp" in header
     assert "httpd_resp_send_chunk" in header
     assert "BITMAPINFOHEADER" in header
+    assert "std::vector<uint8_t> rgb565" not in header
 
 
 def test_v2_touch_stop_requires_hold_progress():

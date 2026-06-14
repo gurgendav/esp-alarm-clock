@@ -5,6 +5,13 @@
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
+// Private LVGL draw APIs are used to render the active screen into small bands.
+// This avoids allocating a full 240x240 framebuffer on memory-constrained ESP32-S3 boards.
+#include "src/core/lv_obj_draw_private.h"
+#include "src/core/lv_refr_private.h"
+#include "src/display/lv_display_private.h"
+#include "src/draw/lv_draw_private.h"
+
 #ifdef USE_ESP_IDF
 #include "esp_http_server.h"
 #endif
@@ -19,15 +26,13 @@ namespace alarmv1::screenshot {
 
 static const char *const TAG = "alarmv1_screenshot";
 constexpr const char *SCREENSHOT_PATH = "/alarmv1/screenshot.bmp";
+constexpr uint16_t ALARMV1_SCREENSHOT_BAND_ROWS = 8;
 
 struct CaptureResult {
   SemaphoreHandle_t done{nullptr};
   bool ok{false};
+  bool response_started{false};
   std::string error{};
-  uint16_t width{0};
-  uint16_t height{0};
-  uint16_t stride{0};
-  std::vector<uint8_t> rgb565{};
 
   CaptureResult() { this->done = xSemaphoreCreateBinary(); }
   ~CaptureResult() {
@@ -57,11 +62,10 @@ inline bool send_chunk_(httpd_req_t *request, const uint8_t *data, size_t len) {
 #endif
 }
 
-inline bool stream_bmp_(AsyncWebServerRequest *request, const CaptureResult &capture) {
+inline bool send_bmp_header_(httpd_req_t *request, uint16_t width, uint16_t height) {
 #ifdef USE_ESP_IDF
-  httpd_req_t *raw_request = *request;
-  const uint32_t row_bytes = ((static_cast<uint32_t>(capture.width) * 3U + 3U) / 4U) * 4U;
-  const uint32_t pixel_bytes = row_bytes * capture.height;
+  const uint32_t row_bytes = ((static_cast<uint32_t>(width) * 3U + 3U) / 4U) * 4U;
+  const uint32_t pixel_bytes = row_bytes * height;
   const uint32_t header_bytes = 54U;
   const uint32_t file_bytes = header_bytes + pixel_bytes;
 
@@ -75,94 +79,172 @@ inline bool stream_bmp_(AsyncWebServerRequest *request, const CaptureResult &cap
   write_le32(header, header_bytes);
 
   // BITMAPINFOHEADER
-  write_le32(header, 40);                         // header size
-  write_le32(header, capture.width);              // width
-  write_le32(header, static_cast<uint32_t>(-static_cast<int32_t>(capture.height)));  // top-down height
-  write_le16(header, 1);                          // planes
-  write_le16(header, 24);                         // bits per pixel
-  write_le32(header, 0);                          // BI_RGB, no compression
+  write_le32(header, 40);                                          // header size
+  write_le32(header, width);                                       // width
+  write_le32(header, static_cast<uint32_t>(-static_cast<int32_t>(height)));  // top-down height
+  write_le16(header, 1);                                           // planes
+  write_le16(header, 24);                                          // bits per pixel
+  write_le32(header, 0);                                           // BI_RGB, no compression
   write_le32(header, pixel_bytes);
-  write_le32(header, 2835);                       // 72 DPI X pixels/meter
-  write_le32(header, 2835);                       // 72 DPI Y pixels/meter
-  write_le32(header, 0);                          // palette colors
-  write_le32(header, 0);                          // important colors
+  write_le32(header, 2835);                                        // 72 DPI X pixels/meter
+  write_le32(header, 2835);                                        // 72 DPI Y pixels/meter
+  write_le32(header, 0);                                           // palette colors
+  write_le32(header, 0);                                           // important colors
 
-  httpd_resp_set_type(raw_request, "image/bmp");
-  httpd_resp_set_hdr(raw_request, "Content-Disposition", "inline; filename=alarmv1-screenshot.bmp");
-  httpd_resp_set_hdr(raw_request, "Cache-Control", "no-store, max-age=0");
+  httpd_resp_set_type(request, "image/bmp");
+  httpd_resp_set_hdr(request, "Content-Disposition", "inline; filename=alarmv1-screenshot.bmp");
+  httpd_resp_set_hdr(request, "Cache-Control", "no-store, max-age=0");
 
-  if (!send_chunk_(raw_request, header.data(), header.size())) {
-    return false;
-  }
-
-  std::vector<uint8_t> row(row_bytes, 0);
-  for (uint16_t y = 0; y < capture.height; y++) {
-    std::fill(row.begin(), row.end(), 0);
-    const uint8_t *src = capture.rgb565.data() + (static_cast<size_t>(y) * capture.stride);
-    for (uint16_t x = 0; x < capture.width; x++) {
-      const uint16_t pixel = static_cast<uint16_t>(src[x * 2]) | (static_cast<uint16_t>(src[x * 2 + 1]) << 8);
-      const uint8_t r = static_cast<uint8_t>(((pixel >> 11) & 0x1F) * 255 / 31);
-      const uint8_t g = static_cast<uint8_t>(((pixel >> 5) & 0x3F) * 255 / 63);
-      const uint8_t b = static_cast<uint8_t>((pixel & 0x1F) * 255 / 31);
-      row[x * 3] = b;
-      row[x * 3 + 1] = g;
-      row[x * 3 + 2] = r;
-    }
-    if (!send_chunk_(raw_request, row.data(), row.size())) {
-      return false;
-    }
-  }
-
-  return httpd_resp_send_chunk(raw_request, nullptr, 0) == ESP_OK;
+  return send_chunk_(request, header.data(), header.size());
 #else
-  request->send(501, "text/plain", "AlarmV1 screenshots require the ESP-IDF web server backend");
   return false;
 #endif
 }
 
-inline void capture_lvgl_screen_(esphome::lvgl::LvglComponent *lvgl, CaptureResult *result) {
+inline bool render_lvgl_band_(lv_obj_t *screen, lv_display_t *display, lv_draw_buf_t *draw_buf, uint16_t width,
+                              uint16_t y, uint16_t rows) {
+#if LV_USE_SNAPSHOT
+  lv_draw_buf_clear(draw_buf, nullptr);
+
+  lv_area_t band_area;
+  band_area.x1 = 0;
+  band_area.y1 = y;
+  band_area.x2 = width - 1;
+  band_area.y2 = y + rows - 1;
+
+  lv_layer_t layer;
+  lv_layer_init(&layer);
+  layer.draw_buf = draw_buf;
+  layer.buf_area = band_area;
+  layer.color_format = LV_COLOR_FORMAT_RGB565;
+  layer._clip_area = band_area;
+  layer.phy_clip_area = band_area;
+
+  lv_draw_unit_send_event(nullptr, LV_EVENT_CHILD_CREATED, &layer);
+
+  lv_display_t *old_refresh_display = lv_refr_get_disp_refreshing();
+  lv_layer_t *old_layer_head = display->layer_head;
+  display->layer_head = &layer;
+  lv_refr_set_disp_refreshing(display);
+
+  lv_obj_redraw(&layer, screen);
+
+  layer.all_tasks_added = true;
+  while (layer.draw_task_head != nullptr) {
+    lv_draw_dispatch_wait_for_request();
+    lv_draw_dispatch();
+  }
+
+  display->layer_head = old_layer_head;
+  lv_refr_set_disp_refreshing(old_refresh_display);
+
+  lv_draw_unit_send_event(nullptr, LV_EVENT_SCREEN_LOAD_START, &layer);
+  lv_draw_unit_send_event(nullptr, LV_EVENT_CHILD_DELETED, &layer);
+  return true;
+#else
+  return false;
+#endif
+}
+
+inline bool stream_lvgl_screen_as_bmp_(httpd_req_t *request, esphome::lvgl::LvglComponent *lvgl,
+                                       CaptureResult *result) {
 #if LV_USE_SNAPSHOT
   if (lvgl == nullptr || lvgl->get_disp() == nullptr) {
     result->error = "LVGL display is not ready";
-    xSemaphoreGive(result->done);
-    return;
+    return false;
   }
 
+  lv_display_t *display = lvgl->get_disp();
   lv_obj_t *screen = lvgl->get_screen_active();
   if (screen == nullptr) {
     result->error = "No active LVGL screen";
-    xSemaphoreGive(result->done);
-    return;
+    return false;
   }
 
-  lv_refr_now(lvgl->get_disp());
-  lv_draw_buf_t *snapshot = lv_snapshot_take(screen, LV_COLOR_FORMAT_RGB565);
-  if (snapshot == nullptr || snapshot->data == nullptr) {
-    result->error = "LVGL snapshot allocation failed";
-    if (snapshot != nullptr) {
-      lv_draw_buf_destroy(snapshot);
+  const uint16_t width = lvgl->get_width();
+  const uint16_t height = lvgl->get_height();
+  if (width == 0 || height == 0) {
+    result->error = "LVGL display returned invalid dimensions";
+    return false;
+  }
+
+  lv_draw_buf_t *draw_buf = lv_draw_buf_create(width, ALARMV1_SCREENSHOT_BAND_ROWS, LV_COLOR_FORMAT_RGB565,
+                                               LV_STRIDE_AUTO);
+  if (draw_buf == nullptr || draw_buf->data == nullptr) {
+    result->error = "LVGL band snapshot allocation failed";
+    if (draw_buf != nullptr) {
+      lv_draw_buf_destroy(draw_buf);
     }
-    xSemaphoreGive(result->done);
-    return;
+    return false;
   }
 
-  result->width = static_cast<uint16_t>(snapshot->header.w);
-  result->height = static_cast<uint16_t>(snapshot->header.h);
-  result->stride = static_cast<uint16_t>(snapshot->header.stride);
-  const size_t data_size = static_cast<size_t>(result->stride) * result->height;
-
-  if (result->width == 0 || result->height == 0 || result->stride < result->width * 2U || data_size == 0) {
-    result->error = "LVGL snapshot returned invalid dimensions";
-    lv_draw_buf_destroy(snapshot);
-    xSemaphoreGive(result->done);
-    return;
+  const uint32_t row_bytes = ((static_cast<uint32_t>(width) * 3U + 3U) / 4U) * 4U;
+  std::vector<uint8_t> row(row_bytes, 0);
+  if (row.empty()) {
+    result->error = "Could not allocate BMP row buffer";
+    lv_draw_buf_destroy(draw_buf);
+    return false;
   }
 
-  result->rgb565.assign(snapshot->data, snapshot->data + data_size);
-  result->ok = true;
-  lv_draw_buf_destroy(snapshot);
+  lv_refr_now(display);
+
+  if (!send_bmp_header_(request, width, height)) {
+    result->error = "Could not send BMP header";
+    lv_draw_buf_destroy(draw_buf);
+    return false;
+  }
+  result->response_started = true;
+
+  const uint16_t stride = static_cast<uint16_t>(draw_buf->header.stride);
+  if (stride < width * 2U) {
+    result->error = "LVGL band snapshot returned invalid stride";
+    lv_draw_buf_destroy(draw_buf);
+    return false;
+  }
+
+  for (uint16_t y = 0; y < height; y += ALARMV1_SCREENSHOT_BAND_ROWS) {
+    const uint16_t rows = std::min<uint16_t>(ALARMV1_SCREENSHOT_BAND_ROWS, height - y);
+    if (!render_lvgl_band_(screen, display, draw_buf, width, y, rows)) {
+      result->error = "LVGL band rendering failed";
+      lv_draw_buf_destroy(draw_buf);
+      return false;
+    }
+
+    for (uint16_t band_y = 0; band_y < rows; band_y++) {
+      std::fill(row.begin(), row.end(), 0);
+      const uint8_t *src = draw_buf->data + (static_cast<size_t>(band_y) * stride);
+      for (uint16_t x = 0; x < width; x++) {
+        const uint16_t pixel = static_cast<uint16_t>(src[x * 2]) | (static_cast<uint16_t>(src[x * 2 + 1]) << 8);
+        const uint8_t r = static_cast<uint8_t>(((pixel >> 11) & 0x1F) * 255 / 31);
+        const uint8_t g = static_cast<uint8_t>(((pixel >> 5) & 0x3F) * 255 / 63);
+        const uint8_t b = static_cast<uint8_t>((pixel & 0x1F) * 255 / 31);
+        row[x * 3] = b;
+        row[x * 3 + 1] = g;
+        row[x * 3 + 2] = r;
+      }
+      if (!send_chunk_(request, row.data(), row.size())) {
+        result->error = "Could not send BMP row";
+        lv_draw_buf_destroy(draw_buf);
+        return false;
+      }
+    }
+  }
+
+  lv_draw_buf_destroy(draw_buf);
+  return httpd_resp_send_chunk(request, nullptr, 0) == ESP_OK;
 #else
   result->error = "LVGL snapshot support is disabled";
+  return false;
+#endif
+}
+
+inline void capture_lvgl_screen_(AsyncWebServerRequest *request, esphome::lvgl::LvglComponent *lvgl,
+                                 CaptureResult *result) {
+#ifdef USE_ESP_IDF
+  httpd_req_t *raw_request = *request;
+  result->ok = stream_lvgl_screen_as_bmp_(raw_request, lvgl, result);
+#else
+  result->error = "AlarmV1 screenshots require the ESP-IDF web server backend";
 #endif
   xSemaphoreGive(result->done);
 }
@@ -184,7 +266,7 @@ class AlarmV1ScreenshotHandler : public AsyncWebHandler {
     }
 
     esphome::App.scheduler.set_timeout(this->lvgl_, "alarmv1_screenshot_capture", 0,
-                                      [this, result]() { capture_lvgl_screen_(this->lvgl_, result.get()); });
+                                      [this, request, result]() { capture_lvgl_screen_(request, this->lvgl_, result.get()); });
 
     if (xSemaphoreTake(result->done, pdMS_TO_TICKS(5000)) != pdTRUE) {
       request->send(504, "text/plain", "Timed out waiting for AlarmV1 LVGL screenshot");
@@ -193,12 +275,12 @@ class AlarmV1ScreenshotHandler : public AsyncWebHandler {
 
     if (!result->ok) {
       const std::string message = result->error.empty() ? "AlarmV1 LVGL screenshot failed" : result->error;
-      request->send(503, "text/plain", message.c_str());
+      if (!result->response_started) {
+        request->send(503, "text/plain", message.c_str());
+      } else {
+        ESP_LOGW(TAG, "AlarmV1 screenshot failed after BMP response started: %s", message.c_str());
+      }
       return;
-    }
-
-    if (!stream_bmp_(request, *result)) {
-      ESP_LOGW(TAG, "Failed to stream AlarmV1 screenshot BMP response");
     }
   }
 
