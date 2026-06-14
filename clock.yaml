@@ -1495,10 +1495,10 @@ lvgl:
             widgets:
               - arc:
                   id: media_volume_arc
-                  width: 232
-                  height: 232
+                  hidden: true
+                  width: 226
+                  height: 226
                   align: CENTER
-                  x: -7
                   value: 50
                   min_value: 0
                   max_value: 100
@@ -1509,9 +1509,9 @@ lvgl:
                   arc_color: 0xFFB59C
               - label:
                   id: media_status_label
-                  width: 160
+                  width: 150
                   align: CENTER
-                  y: -102
+                  y: -94
                   text_align: center
                   text_color: 0x4DD9E4
                   text_font: clock_label_font_12
@@ -1519,19 +1519,19 @@ lvgl:
                   text: "READY"
               - label:
                   id: media_title_label
-                  width: 210
+                  width: 188
                   align: CENTER
-                  y: -76
+                  y: -62
                   text_align: center
                   text_color: 0xF4F4F4
                   text_font: media_text_font_18
-                  long_mode: dot
+                  long_mode: scroll_circular
                   text: "Ready to play"
               - label:
                   id: media_artist_label
-                  width: 204
+                  width: 188
                   align: CENTER
-                  y: -46
+                  y: -34
                   text_align: center
                   text_color: 0x8E9696
                   text_font: media_text_font_14
@@ -1539,26 +1539,40 @@ lvgl:
                   text: "Turn knob for volume"
               - label:
                   id: media_sleep_label
-                  width: 188
+                  width: 176
                   align: CENTER
-                  y: -20
+                  y: -10
                   text_align: center
                   text_color: 0xFFD166
                   text_font: clock_label_font_12
                   long_mode: dot
                   text: ""
+              - bar:
+                  id: media_progress_bar
+                  width: 144
+                  height: 5
+                  align: CENTER
+                  y: 18
+                  min_value: 0
+                  max_value: 100
+                  value: 0
+                  animated: false
+                  bg_color: 0x243030
+                  indicator:
+                    bg_color: 0x4DD9E4
               - button:
                   id: media_stop_button
-                  width: 54
-                  height: 54
-                  x: -68
-                  y: 54
+                  width: 48
+                  height: 48
+                  x: -62
+                  y: 64
                   align: CENTER
-                  radius: 27
-                  bg_opa: TRANSP
+                  radius: 24
+                  bg_color: 0x101616
+                  bg_opa: COVER
                   text_color: 0xFFB4AB
                   border_width: 1
-                  border_color: 0xFFB4AB
+                  border_color: 0x3A2522
                   shadow_width: 0
                   on_click:
                     then:
@@ -1580,12 +1594,12 @@ lvgl:
                         text: "■"
               - button:
                   id: media_play_pause_button
-                  width: 68
-                  height: 68
+                  width: 62
+                  height: 62
                   x: 0
-                  y: 54
+                  y: 64
                   align: CENTER
-                  radius: 34
+                  radius: 31
                   bg_color: 0xFFB59C
                   bg_opa: COVER
                   text_color: Black
@@ -1607,16 +1621,17 @@ lvgl:
                         text: "▶"
               - button:
                   id: media_next_button
-                  width: 54
-                  height: 54
-                  x: 68
-                  y: 54
+                  width: 48
+                  height: 48
+                  x: 62
+                  y: 64
                   align: CENTER
-                  radius: 27
-                  bg_opa: TRANSP
+                  radius: 24
+                  bg_color: 0x101616
+                  bg_opa: COVER
                   text_color: 0x4DD9E4
                   border_width: 1
-                  border_color: 0x4DD9E4
+                  border_color: 0x21464A
                   shadow_width: 0
                   on_click:
                     then:
@@ -2491,9 +2506,20 @@ script:
       - lvgl.arc.update:
           id: media_volume_arc
           value: !lambda |-
-            if (id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0) {
-              return int(id(media_volume_level) * 100.0f + 0.5f);
-            }
+            return int(id(media_volume_level) * 100.0f + 0.5f);
+          arc_color: !lambda |-
+            return lv_color_hex(0xFFB59C);
+      - if:
+          condition:
+            lambda: |-
+              return id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0;
+          then:
+            - lvgl.widget.show: media_volume_arc
+          else:
+            - lvgl.widget.hide: media_volume_arc
+      - lvgl.bar.update:
+          id: media_progress_bar
+          value: !lambda |-
             if (id(media_track_duration).has_state() && id(media_track_position).has_state() &&
                 !isnan(id(media_track_duration).state) && !isnan(id(media_track_position).state) &&
                 id(media_track_duration).state > 0.0f) {
@@ -2506,17 +2532,6 @@ script:
               return int((position / id(media_track_duration).state) * 100.0f + 0.5f);
             }
             return 0;
-          arc_color: !lambda |-
-            if (id(media_volume_overlay_until_ms) != 0 && int32_t(millis() - id(media_volume_overlay_until_ms)) < 0) {
-              return lv_color_hex(0xFFB59C);
-            }
-            if (id(media_track_duration).has_state() && id(media_track_position).has_state() &&
-                !isnan(id(media_track_duration).state) && !isnan(id(media_track_position).state) &&
-                id(media_track_duration).state > 0.0f) {
-              return lv_color_hex(0x4DD9E4);
-            }
-            return lv_color_hex(0x243030);
-      - lvgl.widget.show: media_volume_arc
       - lvgl.label.update:
           id: menu_music_play_label
           text: !lambda |-
@@ -2550,6 +2565,14 @@ script:
               return "Ⅱ";
             }
             return "▶";
+      - if:
+          condition:
+            lambda: |-
+              return id(morning_music_start_pending);
+          then:
+            - lvgl.widget.hide: [media_play_pause_button, media_next_button]
+          else:
+            - lvgl.widget.show: [media_play_pause_button, media_next_button]
       - lvgl.label.update:
           id: media_title_label
           text: !lambda |-

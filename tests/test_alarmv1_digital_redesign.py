@@ -83,24 +83,28 @@ def test_v2_media_screen_uses_large_touch_targets_without_album_art():
     assert "return \"Starting music\";" in text
     assert "return \"Tap stop to cancel\";" in text
     assert "return \"Ready to play\";" in text
-    assert "id: media_play_pause_button\n                  width: 68\n                  height: 68" in text
+    assert "id: media_play_pause_button\n                  width: 62\n                  height: 62" in text
     assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        x: 2\n                        y: 1" in text
-    assert "id: media_stop_button\n                  width: 54\n                  height: 54" in text
-    assert "id: media_next_button\n                  width: 54\n                  height: 54" in text
-    assert "arc_width: 8" in text
+    assert "id: media_stop_button\n                  width: 48\n                  height: 48" in text
+    assert "id: media_next_button\n                  width: 48\n                  height: 48" in text
+    assert "bg_color: 0x101616" in text
 
 
-def test_v2_media_progress_and_volume_share_colored_arc():
+def test_v2_media_path_b_uses_hidden_volume_arc_horizontal_progress_and_rotating_title():
     text = read_clock()
     assert "id: media_track_position" in text
     assert "attribute: media_position" in text
     assert "id: media_track_duration" in text
     assert "attribute: media_duration" in text
-    assert "id(media_volume_overlay_until_ms)" in text
-    assert "return lv_color_hex(0xFFB59C);" in text  # volume color
-    assert "return lv_color_hex(0x4DD9E4);" in text  # progress color
-    assert "return lv_color_hex(0x243030);" in text  # inactive arc
+    assert "id: media_progress_bar" in text
+    assert "lvgl.bar.update:\n          id: media_progress_bar" in text
+    assert "id: media_volume_arc\n                  hidden: true" in text
+    assert "lvgl.widget.hide: media_volume_arc" in text
+    assert "long_mode: scroll_circular" in text
     assert "id(media_position_updated_ms) = millis();" in text
+    assert "return lv_color_hex(0xFFB59C);" in text  # volume/primary color
+    assert "bg_color: 0x4DD9E4" in text  # progress/status color
+    assert "bg_color: 0x243030" in text  # inactive progress bar
 
 
 def test_v2_media_sleep_timer_and_next_double_tap():
