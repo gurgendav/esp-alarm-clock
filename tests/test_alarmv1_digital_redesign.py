@@ -88,14 +88,15 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     assert "id: media_title_label\n                  width: 204\n                  align: CENTER\n                  y: -50" in text
     assert "text_font: media_text_font_20" in text
     assert "id: media_artist_label\n                  width: 196\n                  align: CENTER\n                  y: -16" in text
-    assert "id: media_sleep_label\n                  width: 176\n                  align: CENTER\n                  y: 10" in text
+    assert "id: media_sleep_label\n                  width: 176\n                  align: CENTER\n                  y: 4" in text
     assert "id: media_progress_bar\n                  width: 176\n                  height: 4" in text
-    assert "id: media_play_pause_button\n                  width: 78\n                  height: 44" in text
+    assert "id: media_progress_bar\n                  width: 176\n                  height: 4\n                  align: CENTER\n                  y: 24" in text
+    assert "id: media_play_pause_button\n                  width: 96\n                  height: 40\n                  x: 0\n                  y: 88" in text
     assert "id: media_play_pause_icon_label\n                        align: CENTER\n                        text_align: center" in text
     assert "return \"Pause\";" in text
     assert "return \"Play\";" in text
-    assert "id: media_stop_button\n                  width: 60\n                  height: 36" in text
-    assert "id: media_next_button\n                  width: 60\n                  height: 36" in text
+    assert "id: media_stop_button\n                  width: 68\n                  height: 34\n                  x: -42\n                  y: 56" in text
+    assert "id: media_next_button\n                  width: 68\n                  height: 34\n                  x: 42\n                  y: 56" in text
     assert 'text: "Stop"' in text
     assert 'text: "Next"' in text
     assert "bg_color: 0x101616" in text
@@ -135,6 +136,23 @@ def test_v2_media_starting_state_is_cancel_focused():
     assert "lvgl.widget.hide: [media_stop_button, media_play_pause_button, media_next_button, media_progress_bar]" in text
     assert "lvgl.widget.show: media_starting_stop_button" in text
     assert "lvgl.widget.hide: media_starting_stop_button" in text
+
+
+def test_v2_media_metadata_skips_unsupported_glyphs_before_display():
+    text = read_clock()
+    header_path = ROOT / "alarmv1_media_text.h"
+    assert "    - alarmv1_media_text.h" in text
+    assert header_path.exists()
+    header = header_path.read_text(encoding="utf-8")
+
+    assert "sanitize_media_text" in header
+    assert "is_supported_media_codepoint" in header
+    assert "codepoint >= 0x0410 && codepoint <= 0x044F" in header
+    assert "codepoint == 0x0401 || codepoint == 0x0451" in header
+    assert "return false;" in header
+    assert "alarmv1::media_text::sanitize(id(media_track_title).state, media_title_buf)" in text
+    assert "alarmv1::media_text::sanitize(id(media_track_artist).state, media_artist_buf)" in text
+    assert "alarmv1::media_text::sanitize(id(media_track_album).state, media_artist_buf)" in text
 
 
 def test_v2_media_sleep_timer_and_next_double_tap():
