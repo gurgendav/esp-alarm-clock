@@ -91,7 +91,7 @@ def test_v2_media_screen_uses_clean_controls_without_album_art():
     assert "id: media_artist_label\n                  width: 196\n                  align: CENTER\n                  y: -16" in text
     assert "id: media_sleep_label\n                  width: 176\n                  align: CENTER\n                  y: 4" in text
     assert "id: media_progress_bar\n                  width: 176\n                  height: 4" in text
-    assert "id: media_progress_bar\n                  width: 176\n                  height: 4\n                  align: CENTER\n                  y: 24" in text
+    assert "id: media_progress_bar\n                  width: 176\n                  height: 4\n                  align: CENTER\n                  y: 12" in text
     assert "id: media_control_dock\n                  width: 168\n                  height: 72\n                  align: CENTER\n                  y: 64" in text
     assert "id: media_stop_button\n                        width: 52\n                        height: 64\n                        x: -54\n                        y: 0" in text
     assert "id: media_play_pause_button\n                        width: 52\n                        height: 52\n                        x: 0\n                        y: 0" in text

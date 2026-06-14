@@ -1540,7 +1540,7 @@ lvgl:
                   width: 176
                   height: 4
                   align: CENTER
-                  y: 24
+                  y: 12
                   min_value: 0
                   max_value: 100
                   value: 0
