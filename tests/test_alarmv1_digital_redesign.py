@@ -224,6 +224,25 @@ def test_v2_exposes_alarm_ringing_state_to_home_assistant():
     assert "return id(alarm_ringing);" in text
 
 
+def test_v2_real_screenshot_endpoint_is_registered():
+    text = read_clock()
+    assert "includes:\n    - alarmv1_screenshot.h" in text
+    assert "CONFIG_LV_USE_SNAPSHOT: y" in text
+    assert "- -DLV_USE_SNAPSHOT=1" in text
+    assert "id: alarmv1_lvgl" in text
+    assert "alarmv1::screenshot::register_alarmv1_screenshot_endpoint(id(alarmv1_lvgl));" in text
+
+
+def test_v2_real_screenshot_endpoint_streams_lvgl_bmp():
+    header = (ROOT / "alarmv1_screenshot.h").read_text(encoding="utf-8")
+    assert "constexpr const char *SCREENSHOT_PATH = \"/alarmv1/screenshot.bmp\";" in header
+    assert "lv_snapshot_take" in header
+    assert "LV_COLOR_FORMAT_RGB565" in header
+    assert "image/bmp" in header
+    assert "httpd_resp_send_chunk" in header
+    assert "BITMAPINFOHEADER" in header
+
+
 def test_v2_touch_stop_requires_hold_progress():
     text = read_clock()
     stop_block = text.split("id: stop_button", 1)[1].split("widgets:", 1)[0]

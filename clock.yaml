@@ -12,12 +12,18 @@ esphome:
   name: esphome-web-56058c
   friendly_name: AlarmV1
   min_version: 2025.11.0
+  includes:
+    - alarmv1_screenshot.h
+  platformio_options:
+    build_flags:
+      - -DLV_USE_SNAPSHOT=1
   name_add_mac_suffix: false
   on_boot:
     priority: -10
     then:
       - lambda: |-
           ESP_LOGI("boot", "boot step 1: on_boot started");
+          alarmv1::screenshot::register_alarmv1_screenshot_endpoint(id(alarmv1_lvgl));
       - output.set_max_power:
           id: buzzer
           max_power: 100%
@@ -41,6 +47,8 @@ esp32:
   variant: esp32s3
   framework:
     type: esp-idf
+    sdkconfig_options:
+      CONFIG_LV_USE_SNAPSHOT: y
 
 safe_mode:
   boot_is_good_after: 5s
@@ -937,6 +945,7 @@ font:
     glyphs: "▶Ⅱ■»"
 
 lvgl:
+  id: alarmv1_lvgl
   rotation: 0
   displays:
     - round_display
