@@ -273,6 +273,54 @@ def test_v2_anticlockwise_rotary_starts_quick_override_when_regular_alarm_is_far
     assert smart_start < normal_adjust
 
 
+def test_v2_exposes_ha_one_time_alarm_datetime_and_clear_button():
+    text = read_clock()
+
+    assert "id: one_time_alarm_time" in text
+    assert 'name: "One-Time Alarm"' in text
+    assert "type: datetime" in text
+    assert "set_one_time_alarm_from_epoch" in text
+
+    assert 'name: "Clear One-Time Alarm"' in text
+    clear_button_block = text.split('name: "Clear One-Time Alarm"', 1)[1].split("\n\n", 1)[0]
+    assert "script.execute: clear_one_time_alarm" in clear_button_block
+
+
+def test_v2_one_time_alarm_api_actions_are_exposed_for_automations():
+    text = read_clock()
+    api_block = text.split("api:", 1)[1].split("\nweb_server:", 1)[0]
+
+    assert "actions:" in api_block
+    assert "action: set_one_time_alarm" in api_block
+    assert "target_epoch: int" in api_block
+    assert "set_one_time_alarm_from_epoch" in api_block
+    assert "action: clear_one_time_alarm" in api_block
+    assert "script.execute: clear_one_time_alarm" in api_block
+
+
+def test_v2_one_time_alarm_rejects_read_only_and_past_targets():
+    text = read_clock()
+    set_block = text.split("  - id: set_one_time_alarm_from_epoch", 1)[1].split("\n\n  - id:", 1)[0]
+
+    assert "Parents Home Mode blocks one-time alarm setup" in set_block
+    assert "id(read_only_mode)" in set_block
+    assert "Ignoring one-time alarm in the past" in set_block
+    assert "target_epoch <= uint32_t(now.timestamp)" in set_block
+    assert "id(skip_next_ring) = false;" in set_block
+    assert "id(next_ring_override_active) = true;" in set_block
+    assert "id(next_ring_override_epoch) = target_epoch;" in set_block
+
+
+def test_v2_one_time_alarm_auto_clears_after_ring_or_expiry():
+    text = read_clock()
+    sync_block = text.split("  - id: sync_next_alarm_state", 1)[1].split("\n\n  - id:", 1)[0]
+
+    assert "if (id(next_ring_override_active))" in sync_block
+    assert "id(last_alarm_minute_key) != int(override_minute)" in sync_block
+    assert "id(next_ring_override_active) = false;" in sync_block
+    assert "id(next_ring_override_epoch) = 0;" in sync_block
+
+
 def test_v2_missed_alarm_catches_up_after_power_or_connection_recovery():
     text = read_clock()
     last_key_block = text.split("id: last_alarm_minute_key", 1)[1].split("  - id:", 1)[0]

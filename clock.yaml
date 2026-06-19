@@ -64,6 +64,17 @@ preferences:
 
 api:
   reboot_timeout: 0s
+  actions:
+    - action: set_one_time_alarm
+      variables:
+        target_epoch: int
+      then:
+        - script.execute:
+            id: set_one_time_alarm_from_epoch
+            target_epoch: !lambda 'return uint32_t(target_epoch);'
+    - action: clear_one_time_alarm
+      then:
+        - script.execute: clear_one_time_alarm
 
 web_server:
 
@@ -320,6 +331,12 @@ button:
       - logger.log: "Manual test alarm requested"
       - script.execute: clear_snooze
       - script.execute: start_alarm
+      - script.execute: reset_idle_timer
+  - platform: template
+    name: "Clear One-Time Alarm"
+    icon: "mdi:alarm-off"
+    on_press:
+      - script.execute: clear_one_time_alarm
       - script.execute: reset_idle_timer
 
 sensor:
@@ -615,6 +632,18 @@ datetime:
     on_value:
       then:
         - script.execute: update_minutes_hand
+  - platform: template
+    id: one_time_alarm_time
+    name: "One-Time Alarm"
+    type: datetime
+    icon: "mdi:alarm-plus"
+    optimistic: yes
+    restore_value: true
+    initial_value: "2026-01-01 09:00:00"
+    set_action:
+      - script.execute:
+          id: set_one_time_alarm_from_epoch
+          target_epoch: !lambda 'return uint32_t(x.timestamp);'
 text_sensor:
   - platform: homeassistant
     id: parents_home_mode_state
@@ -1951,6 +1980,55 @@ interval:
                         - script.execute: update_alarm_status_ui
 
 script:
+  - id: set_one_time_alarm_from_epoch
+    parameters:
+      target_epoch: uint32_t
+    then:
+      - lambda: |-
+          if (id(read_only_mode)) {
+            ESP_LOGI("alarm", "Parents Home Mode blocks one-time alarm setup");
+            return;
+          }
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
+          if (!now.is_valid()) {
+            ESP_LOGW("alarm", "Ignoring one-time alarm setup because time is unavailable");
+            return;
+          }
+          if (target_epoch <= uint32_t(now.timestamp)) {
+            ESP_LOGW("alarm", "Ignoring one-time alarm in the past: target epoch %u", target_epoch);
+            return;
+          }
+          id(skip_next_ring) = false;
+          id(skip_next_ring_epoch) = 0;
+          id(next_ring_override_active) = true;
+          id(next_ring_override_epoch) = target_epoch;
+          auto target = ESPTime::from_epoch_local(target_epoch);
+          ESP_LOGI("alarm", "One-time alarm set for %04d-%02d-%02d %02d:%02d", target.year, target.month, target.day_of_month, target.hour, target.minute);
+      - script.execute: sync_next_alarm_state
+      - script.execute: update_minutes_hand
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+
+  - id: clear_one_time_alarm
+    then:
+      - lambda: |-
+          if (id(next_ring_override_active)) {
+            ESP_LOGI("alarm", "One-time alarm cleared");
+          }
+          id(next_ring_override_active) = false;
+          id(next_ring_override_epoch) = 0;
+          if (id(skip_next_ring)) {
+            id(skip_next_ring) = false;
+            id(skip_next_ring_epoch) = 0;
+          }
+      - script.execute: sync_next_alarm_state
+      - script.execute: update_minutes_hand
+      - script.execute: update_alarm_status_ui
+      - script.execute: reset_idle_timer
+
   - id: sync_next_alarm_state
     then:
       - lambda: |-
