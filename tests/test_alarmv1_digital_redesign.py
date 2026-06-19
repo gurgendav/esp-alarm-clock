@@ -279,6 +279,8 @@ def test_v2_exposes_ha_one_time_alarm_datetime_and_clear_button():
     assert "id: one_time_alarm_time" in text
     assert 'name: "One-Time Alarm"' in text
     assert "type: datetime" in text
+    assert "restore_value: false" in text
+    assert "on_value:" in text
     assert "set_one_time_alarm_from_epoch" in text
 
     assert 'name: "Clear One-Time Alarm"' in text

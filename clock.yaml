@@ -638,12 +638,13 @@ datetime:
     type: datetime
     icon: "mdi:alarm-plus"
     optimistic: yes
-    restore_value: true
+    restore_value: false
     initial_value: "2026-01-01 09:00:00"
-    set_action:
-      - script.execute:
-          id: set_one_time_alarm_from_epoch
-          target_epoch: !lambda 'return uint32_t(x.timestamp);'
+    on_value:
+      then:
+        - script.execute:
+            id: set_one_time_alarm_from_epoch
+            target_epoch: !lambda 'return uint32_t(x.timestamp);'
 text_sensor:
   - platform: homeassistant
     id: parents_home_mode_state

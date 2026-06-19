@@ -223,18 +223,19 @@ Expected: PASS after scripts are added in Task 4; may still FAIL at this task if
     type: datetime
     icon: "mdi:alarm-plus"
     optimistic: yes
-    restore_value: true
+    restore_value: false
     initial_value: "2026-01-01 09:00:00"
-    set_action:
-      - script.execute:
-          id: set_one_time_alarm_from_epoch
-          target_epoch: !lambda 'return uint32_t(x.timestamp);'
+    on_value:
+      then:
+        - script.execute:
+            id: set_one_time_alarm_from_epoch
+            target_epoch: !lambda 'return uint32_t(x.timestamp);'
 ```
 
 Notes:
 
-- `set_action` is preferred over `on_value` so restored old UI state does not accidentally re-arm a one-time alarm on boot.
-- The actual active/inactive state remains `next_ring_override_active` + `next_ring_override_epoch`.
+- `on_value` is used because the ESPHome template datetime reliably publishes the new value when HA updates it.
+- `restore_value: false` prevents an old UI value from re-arming itself on boot; the actual active target remains in restored globals (`next_ring_override_active` / `next_ring_override_epoch`).
 
 **Step 2: Add a clear button after `Test Alarm`**
 
