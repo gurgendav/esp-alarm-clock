@@ -273,15 +273,19 @@ def test_v2_anticlockwise_rotary_starts_quick_override_when_regular_alarm_is_far
     assert smart_start < normal_adjust
 
 
-def test_v2_exposes_ha_one_time_alarm_datetime_and_clear_button():
+def test_v2_exposes_ha_one_time_alarm_time_picker_and_clear_button():
     text = read_clock()
 
-    assert "id: one_time_alarm_time" in text
-    assert 'name: "One-Time Alarm"' in text
-    assert "type: datetime" in text
-    assert "restore_value: false" in text
-    assert "on_value:" in text
-    assert "set_one_time_alarm_from_epoch" in text
+    one_time_block = text.split("id: one_time_alarm_time", 1)[1].split("text_sensor:", 1)[0]
+    assert 'name: "One-Time Alarm"' in one_time_block
+    assert "type: time" in one_time_block
+    assert "type: datetime" not in one_time_block
+    assert "restore_value: false" in one_time_block
+    assert 'initial_value: "09:00:00"' in one_time_block
+    assert "on_value:" in one_time_block
+    assert "set_one_time_alarm_for_time" in one_time_block
+    assert "target_hour: !lambda 'return x.hour;'" in one_time_block
+    assert "target_minute: !lambda 'return x.minute;'" in one_time_block
 
     assert 'name: "Clear One-Time Alarm"' in text
     clear_button_block = text.split('name: "Clear One-Time Alarm"', 1)[1].split("\n\n", 1)[0]
@@ -298,6 +302,18 @@ def test_v2_one_time_alarm_api_actions_are_exposed_for_automations():
     assert "set_one_time_alarm_from_epoch" in api_block
     assert "action: clear_one_time_alarm" in api_block
     assert "script.execute: clear_one_time_alarm" in api_block
+
+
+def test_v2_one_time_alarm_time_picker_targets_next_occurrence_and_overrides_schedule():
+    text = read_clock()
+    time_block = text.split("  - id: set_one_time_alarm_for_time", 1)[1].split("\n\n  - id:", 1)[0]
+
+    assert "target_hour: int" in time_block
+    assert "target_minute: int" in time_block
+    assert "target_epoch <= uint32_t(now.timestamp)" in time_block
+    assert "target_epoch += 86400;" in time_block
+    assert "set_one_time_alarm_from_epoch" in time_block
+    assert "next_ring_override_active" not in time_block
 
 
 def test_v2_one_time_alarm_rejects_read_only_and_past_targets():
@@ -333,6 +349,28 @@ def test_v2_missed_alarm_catches_up_after_power_or_connection_recovery():
     assert "now_minute > target_minute + missed_alarm_catch_up_minutes" in text
     assert "id(last_alarm_minute_key) != int(candidate_minute)" in text
     assert "skipped_minute + missed_alarm_catch_up_minutes < now_minute" in text
+
+
+def test_v2_snoozed_alarm_does_not_catch_up_default_schedule_after_dismiss():
+    text = read_clock()
+    sync_block = text.split("  - id: sync_next_alarm_state", 1)[1].split("\n\n  - id:", 1)[0]
+
+    assert "A later alarm already fired; skipping scheduled catch-up" in sync_block
+    assert "id(last_alarm_minute_key) > int(candidate_minute)" in sync_block
+    assert "id(last_alarm_minute_key) <= int(now_minute)" in sync_block
+
+
+def test_v2_stop_alarm_sends_delayed_follow_up_media_stop_for_late_music_assistant_playback():
+    text = read_clock()
+    delayed_block = text.split("  - id: delayed_alarm_media_stop_on_ha", 1)[1].split("\n\n  - id:", 1)[0]
+    stop_block = text.split("  - id: stop_alarm_media_on_ha", 1)[1].split("\n\n  - id:", 1)[0]
+
+    assert "mode: restart" in delayed_block
+    assert "delay: 5s" in delayed_block
+    assert "return !id(alarm_ringing);" in delayed_block
+    assert delayed_block.count("action: ${alarm_audio_stop_action}") >= 2
+    assert "script.execute: delayed_alarm_media_stop_on_ha" in stop_block
+    assert "script.stop: delayed_alarm_media_stop_on_ha" in stop_block
 
 
 def test_v2_exposes_alarm_ringing_state_to_home_assistant():

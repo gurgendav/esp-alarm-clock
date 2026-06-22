@@ -635,16 +635,17 @@ datetime:
   - platform: template
     id: one_time_alarm_time
     name: "One-Time Alarm"
-    type: datetime
+    type: time
     icon: "mdi:alarm-plus"
     optimistic: yes
     restore_value: false
-    initial_value: "2026-01-01 09:00:00"
+    initial_value: "09:00:00"
     on_value:
       then:
         - script.execute:
-            id: set_one_time_alarm_from_epoch
-            target_epoch: !lambda 'return uint32_t(x.timestamp);'
+            id: set_one_time_alarm_for_time
+            target_hour: !lambda 'return x.hour;'
+            target_minute: !lambda 'return x.minute;'
 text_sensor:
   - platform: homeassistant
     id: parents_home_mode_state
@@ -1981,6 +1982,44 @@ interval:
                         - script.execute: update_alarm_status_ui
 
 script:
+  - id: set_one_time_alarm_for_time
+    parameters:
+      target_hour: int
+      target_minute: int
+    then:
+      - lambda: |-
+          auto now = id(sntp_time).now();
+          if (!now.is_valid()) {
+            now = id(rtctime).now();
+          }
+          if (!now.is_valid()) {
+            ESP_LOGW("alarm", "Ignoring one-time alarm time because current time is unavailable");
+            return;
+          }
+          const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
+          uint32_t target_epoch = uint32_t(midnight_epoch + (target_hour * 3600) + (target_minute * 60));
+          if (target_epoch <= uint32_t(now.timestamp)) {
+            target_epoch += 86400;
+          }
+          auto target = ESPTime::from_epoch_local(target_epoch);
+          ESP_LOGI("alarm", "One-time alarm time selected for next %02d:%02d occurrence: %04d-%02d-%02d %02d:%02d", target_hour, target_minute, target.year, target.month, target.day_of_month, target.hour, target.minute);
+      - script.execute:
+          id: set_one_time_alarm_from_epoch
+          target_epoch: !lambda |-
+            auto now = id(sntp_time).now();
+            if (!now.is_valid()) {
+              now = id(rtctime).now();
+            }
+            if (!now.is_valid()) {
+              return 0;
+            }
+            const time_t midnight_epoch = now.timestamp - (now.hour * 3600) - (now.minute * 60) - now.second;
+            uint32_t target_epoch = uint32_t(midnight_epoch + (target_hour * 3600) + (target_minute * 60));
+            if (target_epoch <= uint32_t(now.timestamp)) {
+              target_epoch += 86400;
+            }
+            return target_epoch;
+
   - id: set_one_time_alarm_from_epoch
     parameters:
       target_epoch: uint32_t
@@ -2120,6 +2159,11 @@ script:
               continue;
             }
             if (candidate_minute < now_minute) {
+              if (offset == 0 && id(last_alarm_minute_key) > int(candidate_minute) &&
+                  id(last_alarm_minute_key) <= int(now_minute)) {
+                ESP_LOGI("alarm", "A later alarm already fired; skipping scheduled catch-up for target epoch minute %u", candidate_minute);
+                continue;
+              }
               if (offset == 0 && id(last_alarm_minute_key) != int(candidate_minute) &&
                   now_minute <= candidate_minute + missed_alarm_catch_up_minutes) {
                 id(next_alarm_epoch) = candidate_epoch;
@@ -2429,8 +2473,41 @@ script:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant alarm audio start failed: %s", error.c_str());
 
+  - id: delayed_alarm_media_stop_on_ha
+    mode: restart
+    then:
+      - delay: 5s
+      - if:
+          condition:
+            lambda: "return !id(alarm_ringing);"
+          then:
+            - lambda: |-
+                ESP_LOGI("alarm", "Sending delayed Home Assistant alarm audio stop for late playback");
+            - homeassistant.action:
+                action: ${alarm_audio_stop_action}
+                data:
+                  entity_id: ${alarm_audio_player_entity}
+                on_error:
+                  - lambda: |-
+                      ESP_LOGW("alarm", "Delayed Home Assistant alarm audio stop failed: %s", error.c_str());
+      - delay: 10s
+      - if:
+          condition:
+            lambda: "return !id(alarm_ringing);"
+          then:
+            - lambda: |-
+                ESP_LOGI("alarm", "Sending final delayed Home Assistant alarm audio stop for late playback");
+            - homeassistant.action:
+                action: ${alarm_audio_stop_action}
+                data:
+                  entity_id: ${alarm_audio_player_entity}
+                on_error:
+                  - lambda: |-
+                      ESP_LOGW("alarm", "Final delayed Home Assistant alarm audio stop failed: %s", error.c_str());
+
   - id: stop_alarm_media_on_ha
     then:
+      - script.stop: delayed_alarm_media_stop_on_ha
       - lambda: |-
           ESP_LOGI("alarm", "Requesting Home Assistant alarm audio stop for %s", "${alarm_audio_player_entity}");
       - homeassistant.action:
@@ -2443,6 +2520,7 @@ script:
           on_error:
             - lambda: |-
                 ESP_LOGW("alarm", "Home Assistant alarm audio stop failed: %s", error.c_str());
+      - script.execute: delayed_alarm_media_stop_on_ha
 
   - id: play_morning_briefing_on_ha
     then:
