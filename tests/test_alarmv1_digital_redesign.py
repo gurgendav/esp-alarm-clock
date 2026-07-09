@@ -566,3 +566,78 @@ def test_v2_parents_home_mode_blocks_one_time_override_and_auto_briefing():
     assert "id(morning_briefing_auto_start_ms) = 0;" in readonly_dismiss
     assert "now_ms + 60000" not in readonly_dismiss
     assert "now_ms + 15000" not in readonly_dismiss
+
+
+def test_v2_snooze_budget_is_two_per_wake_session_and_shared_by_all_controls():
+    text = read_clock()
+    assert 'snooze_budget: "2"' in text
+    assert "id: snoozes_used" in text
+    assert "id: alarm_starting_from_snooze" in text
+    assert "id: snoozes_used_sensor" in text
+    assert "name: \"Snoozes Used\"" in text
+    assert "id: snoozes_remaining_sensor" in text
+    assert "name: \"Snoozes Remaining\"" in text
+
+    apply_block = text.split("  - id: apply_snooze_duration", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "id(snoozes_used) >= ${snooze_budget}" in apply_block
+    assert "Snooze budget exhausted" in apply_block
+    assert "id(snoozes_used) += 1;" in apply_block
+    assert apply_block.index("id(snoozes_used) >= ${snooze_budget}") < apply_block.index("id(snooze_active) = true;")
+
+    start_block = text.split("\n  - id: start_alarm\n", 1)[1].split("\n\n  - id: stop_alarm", 1)[0]
+    assert "if (!id(alarm_starting_from_snooze))" in start_block
+    assert "id(snoozes_used) = 0;" in start_block
+    assert "id(alarm_starting_from_snooze) = false;" in start_block
+
+    front_button_block = text.split("id: front_button", 1)[1].split("spi:", 1)[0]
+    assert "script.execute: snooze_alarm_five_minutes" in front_button_block
+    assert "Short press ignored because snooze budget is exhausted" in front_button_block
+
+    ui_block = text.split("  - id: update_alarm_status_ui", 1)[1].split("\n\n  - id: apply_snooze_duration", 1)[0]
+    assert "id(snoozes_used) >= ${snooze_budget}" in ui_block
+    assert "lvgl.widget.hide: [snooze_button, snooze_hint_label]" in ui_block
+    assert "snoozes left" in ui_block
+
+
+def test_v2_wake_lifecycle_telemetry_makes_ha_history_authoritative():
+    text = read_clock()
+    assert "id: alarm_session_id" in text
+    assert "id: alarm_session_active" in text
+    assert "id: alarm_pending_stop_reason" in text
+    assert "id: alarm_last_event_sensor" in text
+    assert "name: \"Last Alarm Event\"" in text
+    assert "id: alarm_last_outcome_sensor" in text
+    assert "name: \"Last Alarm Outcome\"" in text
+    assert "id: publish_wake_event" in text
+    assert "event: esphome.alarmv1_wake_event" in text
+    assert "data_template:" in text
+    assert "session_id: \"{{ session_id }}\"" in text
+    assert "snoozes_used: \"{{ snoozes_used }}\"" in text
+    assert "audio_retries: \"{{ audio_retries }}\"" in text
+
+    for event_name in (
+        "started",
+        "resumed",
+        "snoozed",
+        "audio_playing",
+        "audio_retry",
+        "audio_start_failed",
+        "dismissed",
+        "timed_out",
+        "alarm_disabled",
+    ):
+        assert f'event_name: "{event_name}"' in text
+
+
+def test_v2_readiness_warning_uses_generic_ha_entity_and_preserves_state_priority():
+    text = read_clock()
+    assert "alarm_readiness_entity: sensor.example_alarm_readiness" in text
+    assert "id: alarm_readiness_state" in text
+    assert "entity_id: ${alarm_readiness_entity}" in text
+    assert "Alarm readiness changed to %s" in text
+
+    pill_block = text.split("id: clock_status_pill_label", 1)[1].split("lvgl.widget.update:", 1)[0]
+    assert 'return "CHECK";' in pill_block
+    for higher_priority in ('return "AWAY";', 'return "PARENTS";', 'return "SNOOZING";', 'return "ONE-TIME";', 'return "SKIPPED";'):
+        assert pill_block.index(higher_priority) < pill_block.index('return "CHECK";')
+    assert pill_block.index('return "CHECK";') < pill_block.index('return "ON";')
