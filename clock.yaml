@@ -7,6 +7,7 @@ substitutions:
   home_lights_off_action: light.turn_off
   home_lights_off_entity: all
   alarm_readiness_entity: sensor.example_alarm_readiness
+  alarm_readiness_heartbeat_entity: sensor.example_alarm_readiness_heartbeat
   snooze_budget: "2"
   timezone: Etc/UTC
 
@@ -123,6 +124,14 @@ globals:
     type: int
     restore_value: no
     initial_value: "0"
+  - id: alarm_external_audio_session_retry_count
+    type: int
+    restore_value: no
+    initial_value: "0"
+  - id: alarm_audio_attempt_generation
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: alarm_external_audio_retry_needed
     type: bool
     restore_value: no
@@ -167,6 +176,10 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: "0"
+  - id: alarm_event_sequence
+    type: uint32_t
+    restore_value: yes
+    initial_value: "0"
   - id: alarm_session_active
     type: bool
     restore_value: no
@@ -207,6 +220,14 @@ globals:
     type: int
     restore_value: no
     initial_value: "0"
+  - id: alarm_snooze_terminal_pending
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: alarm_snooze_terminal_event
+    type: std::string
+    restore_value: no
+    initial_value: '""'
   - id: snooze_day_of_year
     type: int
     restore_value: no
@@ -736,6 +757,13 @@ text_sensor:
         - lambda: |-
             ESP_LOGI("alarm", "Alarm readiness changed to %s", x.c_str());
         - script.execute: update_alarm_status_ui
+  - platform: homeassistant
+    id: alarm_readiness_heartbeat
+    entity_id: ${alarm_readiness_heartbeat_entity}
+    internal: true
+    on_value:
+      then:
+        - script.execute: update_alarm_status_ui
   - platform: template
     id: alarm_last_event_sensor
     name: "Last Alarm Event"
@@ -822,6 +850,7 @@ text_sensor:
             const uint32_t elapsed_ms = millis() - id(alarm_external_audio_playing_started_ms);
             if (elapsed_ms < minimum_external_audio_ms && id(alarm_external_audio_retry_count) < 2) {
               id(alarm_external_audio_retry_count) += 1;
+              id(alarm_external_audio_session_retry_count) += 1;
               id(alarm_external_audio_playing_started_ms) = 0;
               id(alarm_external_audio_retry_needed) = true;
               id(alarm_audio_event_code) = 2;
@@ -2033,7 +2062,11 @@ interval:
               if (id(last_alarm_minute_key) == int(target_minute)) {
                 return false;
               }
-              id(alarm_starting_from_snooze) = id(snooze_active);
+              auto target = ESPTime::from_epoch_local(id(next_alarm_epoch));
+              id(alarm_starting_from_snooze) = id(snooze_active) &&
+                target.day_of_year == id(snooze_day_of_year) &&
+                target.hour == id(snooze_hour) &&
+                target.minute == id(snooze_minute);
               id(alarm_next_start_is_test) = false;
               id(last_alarm_minute_key) = int(target_minute);
               if (now_minute == target_minute) {
@@ -2124,20 +2157,23 @@ script:
       outcome: string
     then:
       - lambda: |-
+          id(alarm_event_sequence) += 1;
           const std::string session_text = str_sprintf("%u", (unsigned) id(alarm_session_id));
-          id(alarm_last_event_sensor).publish_state(event_name + ":" + session_text);
+          const std::string sequence_text = str_sprintf("%u", (unsigned) id(alarm_event_sequence));
+          id(alarm_last_event_sensor).publish_state(event_name + ":" + session_text + ":" + sequence_text);
           if (!outcome.empty()) {
-            id(alarm_last_outcome_sensor).publish_state(outcome + ":" + session_text);
+            id(alarm_last_outcome_sensor).publish_state(outcome + ":" + session_text + ":" + sequence_text);
           }
           id(snoozes_used_sensor).publish_state(float(id(snoozes_used)));
           id(snoozes_remaining_sensor).publish_state(float(std::max(0, int(${snooze_budget}) - id(snoozes_used))));
           ESP_LOGI("alarm_history", "session=%s event=%s source=%s outcome=%s snoozes=%d/%d retries=%d",
                    session_text.c_str(), event_name.c_str(), source.c_str(), outcome.c_str(),
-                   id(snoozes_used), int(${snooze_budget}), id(alarm_external_audio_retry_count));
+                   id(snoozes_used), int(${snooze_budget}), id(alarm_external_audio_session_retry_count));
       - homeassistant.event:
           event: esphome.alarmv1_wake_event
           data_template:
             session_id: "{{ session_id }}"
+            event_sequence: "{{ event_sequence }}"
             event_name: "{{ event_name }}"
             source: "{{ source }}"
             outcome: "{{ outcome }}"
@@ -2147,12 +2183,13 @@ script:
             timestamp: "{{ timestamp }}"
           variables:
             session_id: !lambda 'return str_sprintf("%u", (unsigned) id(alarm_session_id));'
+            event_sequence: !lambda 'return str_sprintf("%u", (unsigned) id(alarm_event_sequence));'
             event_name: !lambda 'return event_name;'
             source: !lambda 'return source;'
             outcome: !lambda 'return outcome;'
             snoozes_used: !lambda 'return std::to_string(id(snoozes_used));'
             snoozes_remaining: !lambda 'return std::to_string(std::max(0, int(${snooze_budget}) - id(snoozes_used)));'
-            audio_retries: !lambda 'return std::to_string(id(alarm_external_audio_retry_count));'
+            audio_retries: !lambda 'return std::to_string(id(alarm_external_audio_session_retry_count));'
             timestamp: !lambda |-
               auto now = id(sntp_time).now();
               if (!now.is_valid()) {
@@ -2316,6 +2353,15 @@ script:
               }
               return;
             }
+            id(alarm_snooze_terminal_pending) = true;
+            id(alarm_snooze_terminal_event) = snooze_skipped ? "snooze_skipped" : "snooze_expired";
+            id(alarm_pending_stop_reason) = id(alarm_snooze_terminal_event);
+            id(snooze_active) = false;
+            id(snooze_day_of_year) = -1;
+            id(snooze_hour) = -1;
+            id(snooze_minute) = -1;
+            id(alarm_session_active) = false;
+            ESP_LOGW("alarm", "Ending stale snooze session: %s", id(alarm_snooze_terminal_event).c_str());
           }
 
           const auto weekday_alarm = id(weekday_alarm_time);
@@ -2361,6 +2407,18 @@ script:
             id(next_alarm_available) = false;
             id(next_alarm_epoch) = 0;
           }
+      - if:
+          condition:
+            lambda: "return id(alarm_snooze_terminal_pending);"
+          then:
+            - script.execute:
+                id: publish_wake_event
+                event_name: !lambda "return id(alarm_snooze_terminal_event);"
+                source: "scheduler"
+                outcome: !lambda "return id(alarm_snooze_terminal_event);"
+            - lambda: |-
+                id(alarm_snooze_terminal_pending) = false;
+                id(alarm_snooze_terminal_event).clear();
 
   - id: update_alarm_stop_hold_ui
     then:
@@ -2471,7 +2529,15 @@ script:
       - lambda: |-
           id(alarm_should_publish_dismiss) = id(alarm_session_active) && (id(alarm_ringing) || id(snooze_active));
           if (id(alarm_should_publish_dismiss)) {
-            id(alarm_pending_stop_reason) = std::string("dismissed_") + id(alarm_dismiss_source);
+            if (id(alarm_dismiss_source) == "home_assistant") {
+              id(alarm_pending_stop_reason) = "dismissed_ha";
+            } else if (id(alarm_dismiss_source) == "front_button") {
+              id(alarm_pending_stop_reason) = "dismissed_front";
+            } else if (id(alarm_dismiss_source) == "touch") {
+              id(alarm_pending_stop_reason) = "dismissed_touch";
+            } else {
+              id(alarm_pending_stop_reason) = "dismissed_unknown";
+            }
           }
           const uint32_t now_ms = millis();
           id(dismiss_feedback_until_ms) = now_ms + 3000;
@@ -2514,6 +2580,18 @@ script:
             ESP_LOGI("ui", "Parents Home Mode blocks skip next ring");
             return;
           }
+          if (id(snooze_active)) {
+            id(alarm_snooze_terminal_pending) = true;
+            id(alarm_snooze_terminal_event) = "snooze_skipped";
+            id(alarm_pending_stop_reason) = "snooze_skipped";
+            id(snooze_active) = false;
+            id(snooze_day_of_year) = -1;
+            id(snooze_hour) = -1;
+            id(snooze_minute) = -1;
+            id(alarm_session_active) = false;
+            ESP_LOGI("ui", "Active snooze cancelled instead of leaking into the next scheduled ring");
+            return;
+          }
           if (id(skip_next_ring)) {
             id(skip_next_ring) = false;
             id(skip_next_ring_epoch) = 0;
@@ -2535,6 +2613,19 @@ script:
           id(skip_next_ring_epoch) = id(next_alarm_epoch);
           auto skipped_alarm = ESPTime::from_epoch_local(id(skip_next_ring_epoch));
           ESP_LOGI("ui", "Skip next ring set for %02d:%02d", skipped_alarm.hour, skipped_alarm.minute);
+      - if:
+          condition:
+            lambda: "return id(alarm_snooze_terminal_pending);"
+          then:
+            - script.execute:
+                id: publish_wake_event
+                event_name: !lambda "return id(alarm_snooze_terminal_event);"
+                source: "clock_skip"
+                outcome: !lambda "return id(alarm_snooze_terminal_event);"
+            - lambda: |-
+                id(alarm_snooze_terminal_pending) = false;
+                id(alarm_snooze_terminal_event).clear();
+            - script.execute: sync_next_alarm_state
       - script.execute: update_alarm_status_ui
 
   - id: open_home_menu
@@ -2636,7 +2727,9 @@ script:
           then:
             - lambda: |-
                 id(alarm_external_audio_retry_count) += 1;
-                ESP_LOGW("alarm", "External alarm audio did not reach playing within 45s; retrying alarm audio (%d/2)", id(alarm_external_audio_retry_count));
+                id(alarm_external_audio_session_retry_count) += 1;
+                ESP_LOGW("alarm", "External alarm audio did not reach playing within 45s; retrying alarm audio (%d/2, %d session total)",
+                         id(alarm_external_audio_retry_count), id(alarm_external_audio_session_retry_count));
             - script.execute:
                 id: publish_wake_event
                 event_name: "audio_retry"
@@ -2649,7 +2742,21 @@ script:
     then:
       - script.execute: alarm_external_audio_watchdog
       - lambda: |-
-          ESP_LOGI("alarm", "Requesting Home Assistant alarm audio start");
+          id(alarm_audio_attempt_generation) += 1;
+      - script.execute:
+          id: request_alarm_media_on_ha
+          request_session_id: !lambda "return id(alarm_session_id);"
+          request_generation: !lambda "return id(alarm_audio_attempt_generation);"
+
+  - id: request_alarm_media_on_ha
+    mode: parallel
+    parameters:
+      request_session_id: uint32_t
+      request_generation: uint32_t
+    then:
+      - lambda: |-
+          ESP_LOGI("alarm", "Requesting Home Assistant alarm audio start for session %u attempt %u",
+                   (unsigned) request_session_id, (unsigned) request_generation);
       - homeassistant.action:
           action: ${alarm_audio_start_action}
           data:
@@ -2657,7 +2764,10 @@ script:
           on_success:
             - if:
                 condition:
-                  lambda: "return id(alarm_ringing);"
+                  lambda: |-
+                    return id(alarm_session_active) && id(alarm_ringing) &&
+                           id(alarm_session_id) == request_session_id &&
+                           id(alarm_audio_attempt_generation) == request_generation;
                 then:
                   - lambda: |-
                       ESP_LOGI("alarm", "Requested Home Assistant alarm audio start");
@@ -2665,16 +2775,33 @@ script:
                   - output.turn_off: buzzer
                 else:
                   - lambda: |-
-                      ESP_LOGW("alarm", "Home Assistant alarm audio started after alarm stopped; stopping media now");
-                  - script.execute: stop_alarm_media_on_ha
+                      ESP_LOGW("alarm", "Ignoring stale alarm audio success for session %u attempt %u",
+                               (unsigned) request_session_id, (unsigned) request_generation);
+                  - if:
+                      condition:
+                        lambda: |-
+                          return id(alarm_session_id) == request_session_id && !id(alarm_ringing);
+                      then:
+                        - script.execute: stop_alarm_media_on_ha
           on_error:
-            - lambda: |-
-                ESP_LOGW("alarm", "Home Assistant alarm audio start failed: %s", error.c_str());
-            - script.execute:
-                id: publish_wake_event
-                event_name: "audio_start_failed"
-                source: "home_assistant_action"
-                outcome: ""
+            - if:
+                condition:
+                  lambda: |-
+                    return id(alarm_session_active) && id(alarm_ringing) &&
+                           id(alarm_session_id) == request_session_id &&
+                           id(alarm_audio_attempt_generation) == request_generation;
+                then:
+                  - lambda: |-
+                      ESP_LOGW("alarm", "Home Assistant alarm audio start failed: %s", error.c_str());
+                  - script.execute:
+                      id: publish_wake_event
+                      event_name: "audio_start_failed"
+                      source: "home_assistant_action"
+                      outcome: ""
+                else:
+                  - lambda: |-
+                      ESP_LOGW("alarm", "Ignoring stale alarm audio error for session %u attempt %u: %s",
+                               (unsigned) request_session_id, (unsigned) request_generation, error.c_str());
 
   - id: delayed_alarm_media_stop_on_ha
     mode: restart
@@ -3196,8 +3323,19 @@ script:
             if (id(skip_next_ring)) {
               return "SKIPPED";
             }
-            if (id(alarm_readiness_state).has_state() &&
-                (id(alarm_readiness_state).state == "warning" || id(alarm_readiness_state).state == "unknown")) {
+            bool readiness_fresh = false;
+            auto readiness_now = id(sntp_time).now();
+            if (!readiness_now.is_valid()) {
+              readiness_now = id(rtctime).now();
+            }
+            if (readiness_now.is_valid() && id(alarm_readiness_heartbeat).has_state()) {
+              const uint32_t heartbeat_epoch = strtoul(id(alarm_readiness_heartbeat).state.c_str(), nullptr, 10);
+              const uint32_t now_epoch = uint32_t(readiness_now.timestamp);
+              readiness_fresh = heartbeat_epoch != 0 && now_epoch >= heartbeat_epoch && now_epoch - heartbeat_epoch <= 120;
+            }
+            const bool readiness_ready = readiness_fresh && id(alarm_readiness_state).has_state() &&
+              id(alarm_readiness_state).state == "ready";
+            if (!readiness_ready) {
               return "CHECK";
             }
             return "ON";
@@ -3225,8 +3363,19 @@ script:
             if (id(skip_next_ring)) {
               return lv_color_hex(0xFFD166);
             }
-            if (id(alarm_readiness_state).has_state() &&
-                (id(alarm_readiness_state).state == "warning" || id(alarm_readiness_state).state == "unknown")) {
+            bool readiness_fresh = false;
+            auto readiness_now = id(sntp_time).now();
+            if (!readiness_now.is_valid()) {
+              readiness_now = id(rtctime).now();
+            }
+            if (readiness_now.is_valid() && id(alarm_readiness_heartbeat).has_state()) {
+              const uint32_t heartbeat_epoch = strtoul(id(alarm_readiness_heartbeat).state.c_str(), nullptr, 10);
+              const uint32_t now_epoch = uint32_t(readiness_now.timestamp);
+              readiness_fresh = heartbeat_epoch != 0 && now_epoch >= heartbeat_epoch && now_epoch - heartbeat_epoch <= 120;
+            }
+            const bool readiness_ready = readiness_fresh && id(alarm_readiness_state).has_state() &&
+              id(alarm_readiness_state).state == "ready";
+            if (!readiness_ready) {
               return lv_color_hex(0xFFB020);
             }
             return lv_color_hex(0x17351F);
@@ -3239,9 +3388,22 @@ script:
             if (id(dismiss_feedback_until_ms) != 0 && millis() < id(dismiss_feedback_until_ms)) {
               return lv_color_hex(0xFFB4AB);
             }
-            if (!id(alarm_enabled) || id(read_only_mode) || id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring) ||
-                (id(alarm_readiness_state).has_state() &&
-                 (id(alarm_readiness_state).state == "warning" || id(alarm_readiness_state).state == "unknown"))) {
+            if (!id(alarm_enabled) || id(read_only_mode) || id(snooze_active) || id(next_ring_override_active) || id(skip_next_ring)) {
+              return lv_color_hex(0x000000);
+            }
+            bool readiness_fresh = false;
+            auto readiness_now = id(sntp_time).now();
+            if (!readiness_now.is_valid()) {
+              readiness_now = id(rtctime).now();
+            }
+            if (readiness_now.is_valid() && id(alarm_readiness_heartbeat).has_state()) {
+              const uint32_t heartbeat_epoch = strtoul(id(alarm_readiness_heartbeat).state.c_str(), nullptr, 10);
+              const uint32_t now_epoch = uint32_t(readiness_now.timestamp);
+              readiness_fresh = heartbeat_epoch != 0 && now_epoch >= heartbeat_epoch && now_epoch - heartbeat_epoch <= 120;
+            }
+            const bool readiness_ready = readiness_fresh && id(alarm_readiness_state).has_state() &&
+              id(alarm_readiness_state).state == "ready";
+            if (!readiness_ready) {
               return lv_color_hex(0x000000);
             }
             return lv_color_hex(0xB8F5C1);
@@ -3546,6 +3708,7 @@ script:
           }
           if (!id(alarm_start_was_resume)) {
             id(snoozes_used) = 0;
+            id(alarm_external_audio_session_retry_count) = 0;
             uint32_t candidate_session = now.is_valid() ? uint32_t(now.timestamp) : uint32_t(millis() / 1000);
             if (candidate_session <= id(alarm_session_id)) {
               candidate_session = id(alarm_session_id) + 1;

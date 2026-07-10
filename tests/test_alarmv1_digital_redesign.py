@@ -641,3 +641,40 @@ def test_v2_readiness_warning_uses_generic_ha_entity_and_preserves_state_priorit
     for higher_priority in ('return "AWAY";', 'return "PARENTS";', 'return "SNOOZING";', 'return "ONE-TIME";', 'return "SKIPPED";'):
         assert pill_block.index(higher_priority) < pill_block.index('return "CHECK";')
     assert pill_block.index('return "CHECK";') < pill_block.index('return "ON";')
+
+
+def test_v2_snooze_resume_is_bound_to_target_and_terminal_paths_clear_session():
+    text = read_clock()
+    trigger_block = text.split("const uint32_t target_minute", 1)[1].split("return true;", 1)[0]
+    assert "target.day_of_year == id(snooze_day_of_year)" in trigger_block
+    assert "target.hour == id(snooze_hour)" in trigger_block
+    assert "target.minute == id(snooze_minute)" in trigger_block
+    assert "id(alarm_starting_from_snooze) = id(snooze_active);" not in trigger_block
+
+    sync_block = text.split("  - id: sync_next_alarm_state", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "id(alarm_snooze_terminal_pending) = true;" in sync_block
+    assert 'id(alarm_snooze_terminal_event) = snooze_skipped ? "snooze_skipped" : "snooze_expired";' in sync_block
+    assert "id(alarm_session_active) = false;" in sync_block
+    assert 'event_name: !lambda "return id(alarm_snooze_terminal_event);"' in sync_block
+
+    toggle_block = text.split("  - id: toggle_skip_next_ring", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "if (id(snooze_active))" in toggle_block
+    assert 'id(alarm_snooze_terminal_event) = "snooze_skipped";' in toggle_block
+    assert toggle_block.index("if (id(snooze_active))") < toggle_block.index("id(skip_next_ring) = true;")
+
+
+def test_v2_readiness_heartbeat_fails_closed_and_audio_callbacks_are_session_guarded():
+    text = read_clock()
+    assert "alarm_readiness_heartbeat_entity: sensor.example_alarm_readiness_heartbeat" in text
+    assert "id: alarm_readiness_heartbeat" in text
+    assert "entity_id: ${alarm_readiness_heartbeat_entity}" in text
+    assert "readiness_fresh" in text
+    assert "readiness_ready" in text
+
+    assert "id: request_alarm_media_on_ha" in text
+    assert "request_session_id: uint32_t" in text
+    assert "request_generation: uint32_t" in text
+    request_block = text.split("  - id: request_alarm_media_on_ha", 1)[1].split("\n\n  - id:", 1)[0]
+    assert "id(alarm_session_id) == request_session_id" in request_block
+    assert "id(alarm_audio_attempt_generation) == request_generation" in request_block
+    assert "Ignoring stale alarm audio" in request_block
