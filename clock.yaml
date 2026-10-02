@@ -25,6 +25,10 @@ esphome:
   on_boot:
     priority: -10
     then:
+      # RTC setup only probes registers; restore system time before any boot delay
+      # lets the scheduling interval run (the RTC poller is disabled below).
+      - pcf8563.read_time:
+          id: rtctime
       - lambda: |-
           ESP_LOGI("boot", "boot step 1: on_boot started");
           alarmv1::screenshot::register_alarmv1_screenshot_endpoint(
@@ -61,6 +65,7 @@ safe_mode:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  reboot_timeout: 0s
 
 preferences:
   flash_write_interval: 10s
@@ -831,12 +836,12 @@ text_sensor:
         - lambda: |-
             id(alarm_external_audio_retry_needed) = false;
             id(alarm_audio_event_code) = 0;
-            if (!id(alarm_ringing) || !id(alarm_audio_player_state).has_state()) {
+            if (!id(alarm_ringing)) {
               return;
             }
             const uint32_t minimum_external_audio_ms = 45000;
             const auto state = id(alarm_audio_player_state).state;
-            if (state == "playing") {
+            if (id(alarm_audio_player_state).has_state() && state == "playing") {
               if (id(alarm_external_audio_playing_started_ms) == 0) {
                 id(alarm_external_audio_playing_started_ms) = millis();
                 id(alarm_audio_event_code) = 1;
@@ -848,14 +853,32 @@ text_sensor:
               return;
             }
             const uint32_t elapsed_ms = millis() - id(alarm_external_audio_playing_started_ms);
+            // Loss of playback always restores local audio; only HA retries are
+            // limited by the early-drop window and per-ring retry budget.
+            id(alarm_external_audio_playing_started_ms) = 0;
             if (elapsed_ms < minimum_external_audio_ms && id(alarm_external_audio_retry_count) < 2) {
               id(alarm_external_audio_retry_count) += 1;
               id(alarm_external_audio_session_retry_count) += 1;
-              id(alarm_external_audio_playing_started_ms) = 0;
               id(alarm_external_audio_retry_needed) = true;
               id(alarm_audio_event_code) = 2;
               ESP_LOGW("alarm", "External alarm audio stopped after %ums; retrying alarm audio (%d/2)", elapsed_ms, id(alarm_external_audio_retry_count));
             }
+        - if:
+            condition:
+              lambda: |-
+                return id(alarm_ringing) && id(alarm_audio_player_state).has_state() &&
+                       id(alarm_audio_player_state).state == "playing";
+            then:
+              - script.stop: alarm_loop
+              - output.turn_off: buzzer
+        - if:
+            condition:
+              lambda: |-
+                return id(alarm_ringing) &&
+                       (!id(alarm_audio_player_state).has_state() || id(alarm_audio_player_state).state != "playing") &&
+                       !id(alarm_loop).is_running();
+            then:
+              - script.execute: alarm_loop
         - if:
             condition:
               lambda: "return id(alarm_audio_event_code) == 1;"
@@ -884,7 +907,6 @@ text_sensor:
             then:
               - lambda: |-
                   id(alarm_external_audio_retry_needed) = false;
-              - script.execute: alarm_loop
               - script.execute: start_alarm_media_on_ha
   - platform: homeassistant
     id: media_track_title
@@ -2770,9 +2792,8 @@ script:
                            id(alarm_audio_attempt_generation) == request_generation;
                 then:
                   - lambda: |-
-                      ESP_LOGI("alarm", "Requested Home Assistant alarm audio start");
-                  - script.stop: alarm_loop
-                  - output.turn_off: buzzer
+                      // Action success is acceptance, not proof of speaker playback.
+                      ESP_LOGI("alarm", "Home Assistant accepted alarm audio start; awaiting playing state");
                 else:
                   - lambda: |-
                       ESP_LOGW("alarm", "Ignoring stale alarm audio success for session %u attempt %u",
