@@ -1,11 +1,5 @@
 # AlarmV1 UI previews
 
-The three PNGs in this directory are **illustrative, source-derived previews**,
-not screenshots taken from the M5Stack Dial and not an LVGL emulator. They show
-example data only. They are deliberately labelled as previews in the README so
-that they cannot be mistaken for proof of an installed firmware version or a
-working speaker.
-
 ## Source and fidelity
 
 - Source: [`clock.yaml` at `6a3e0df44246fb215c65ae22a25bbdee5bf0980c`](https://github.com/gurgendav/esp-alarm-clock/blob/6a3e0df44246fb215c65ae22a25bbdee5bf0980c/clock.yaml).
